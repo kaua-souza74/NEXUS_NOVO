@@ -1,0 +1,15 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+.vercel/
+.env
+.env.*
+!.env.example
+.npm-cache/
+*.tsbuildinfo
+next-env.d.ts
+/flutter_app/supabase.local.json
+
+/supabase/.temp/
