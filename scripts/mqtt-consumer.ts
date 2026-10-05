@@ -4,8 +4,10 @@ import mqtt from "mqtt";
 import { ingestDeviceReadings, isRecord } from "../src/lib/iot/ingest";
 
 const BROKER_URL = process.env.MQTT_BROKER_URL ?? "mqtt://broker.emqx.io:1883";
-const TOPIC = process.env.MQTT_TOPIC ?? "nexus/vista-real/quarto-101/ESP32-001/readings";
-const EXPECTED_DEVICE_ID = "ESP32-001";
+const TOPIC_FILTER = process.env.MQTT_SUBSCRIBE_TOPIC ?? "nexus/vista-real/quarto-101/+/readings";
+const ALLOWED_DEVICE_IDS = new Set(["ESP32-001", "ESP32-00"]);
+const TOPIC_PREFIX = "nexus/vista-real/quarto-101/";
+const TOPIC_SUFFIX = "/readings";
 const MAX_MESSAGE_BYTES = 4096;
 const MAX_NONCES = 10_000;
 const seenNonces = new Map<string, number>();
@@ -38,17 +40,16 @@ const client = mqtt.connect(BROKER_URL, {
 
 client.on("connect", () => {
   console.info("[NEXUS:MQTT] Connected");
-  client.subscribe(TOPIC, { qos: 0 }, (error) => {
+  client.subscribe(TOPIC_FILTER, { qos: 0 }, (error) => {
     if (error) {
       console.error("[NEXUS:MQTT] Subscribe failed", error.message);
       return;
     }
-    console.info(`[NEXUS:MQTT] Subscribed: ${TOPIC}`);
+    console.info(`[NEXUS:MQTT] Subscribed: ${TOPIC_FILTER}`);
   });
 });
 
 client.on("message", async (topic, message) => {
-  if (topic !== TOPIC) return;
   console.info("[NEXUS:MQTT] Message received");
   if (message.byteLength > MAX_MESSAGE_BYTES) {
     console.warn("[NEXUS:MQTT] Invalid payload: message too large");
@@ -62,7 +63,11 @@ client.on("message", async (topic, message) => {
     console.warn("[NEXUS:MQTT] Invalid payload: invalid JSON");
     return;
   }
-  if (!isEnvelope(envelope) || envelope.device_id !== EXPECTED_DEVICE_ID) {
+  if (
+    !isEnvelope(envelope) ||
+    !ALLOWED_DEVICE_IDS.has(envelope.device_id) ||
+    topic !== `${TOPIC_PREFIX}${envelope.device_id}${TOPIC_SUFFIX}`
+  ) {
     console.warn("[NEXUS:MQTT] Invalid envelope or device ID");
     return;
   }

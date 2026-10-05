@@ -74,8 +74,9 @@ class NexusRepository {
       loadHotel(),
       loadSpaces(),
       loadDevices(),
-      loadReadings(limit: 10),
+      loadReadings(limit: 100),
       loadMembership(),
+      loadProfile(),
     ]);
     return {
       'hotel': values[0],
@@ -83,6 +84,7 @@ class NexusRepository {
       'devices': values[2] as List<Map<String, dynamic>>,
       'readings': values[3] as List<Map<String, dynamic>>,
       'membership': values[4],
+      'profile': values[5],
     };
   }
 }

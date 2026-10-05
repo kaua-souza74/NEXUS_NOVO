@@ -11,5 +11,6 @@ dist/
 *.tsbuildinfo
 next-env.d.ts
 /flutter_app/supabase.local.json
+/firmware/esp32_nexus/arduino_secrets.h
 
 /supabase/.temp/
