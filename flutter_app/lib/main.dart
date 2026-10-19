@@ -6,8 +6,11 @@ import 'config.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty) {
-    await Supabase.initialize(url: supabaseUrl, publishableKey: supabasePublishableKey);
+  if (supabaseConfig.isConfigured) {
+    await Supabase.initialize(
+      url: supabaseConfig.url,
+      publishableKey: supabaseConfig.publishableKey,
+    );
   }
-  runApp(const NexusApp());
+  runApp(NexusApp(config: supabaseConfig));
 }

@@ -12,7 +12,8 @@
 #include <cstring>
 #include <DHT.h>
 #include <WiFi.h>
-#include <esp_random.h>-include <mbedtls/md.h>
+#include <esp_random.h>
+#include <mbedtls/md.h>
 #include <time.h>
 
 #include "arduino_secrets.h"
@@ -48,11 +49,11 @@ bool deviceTokenConfigured() {
 String newNonce() {
   uint8_t randomBytes[16];
   esp_fill_random(randomBytes, sizeof(randomBytes));
-  static constexpr char HEX[] = "0123456789abcdef";
+  static constexpr char HEX_DIGITS[] = "0123456789abcdef";
   char nonce[sizeof(randomBytes) * 2 + 1];
   for (size_t i = 0; i < sizeof(randomBytes); ++i) {
-    nonce[i * 2] = HEX[randomBytes[i] >> 4];
-    nonce[i * 2 + 1] = HEX[randomBytes[i] & 0x0F];
+    nonce[i * 2] = HEX_DIGITS[randomBytes[i] >> 4];
+    nonce[i * 2 + 1] = HEX_DIGITS[randomBytes[i] & 0x0F];
   }
   nonce[sizeof(nonce) - 1] = '\0';
   return String(nonce);
@@ -103,10 +104,10 @@ bool hmacSha256Hex(const String &message, char output[65]) {
   mbedtls_md_free(&context);
   if (finish != 0) return false;
 
-  static constexpr char HEX[] = "0123456789abcdef";
+  static constexpr char HEX_DIGITS[] = "0123456789abcdef";
   for (size_t i = 0; i < sizeof(digest); ++i) {
-    output[i * 2] = HEX[digest[i] >> 4];
-    output[i * 2 + 1] = HEX[digest[i] & 0x0F];
+    output[i * 2] = HEX_DIGITS[digest[i] >> 4];
+    output[i * 2 + 1] = HEX_DIGITS[digest[i] & 0x0F];
   }
   output[64] = '\0';
   return true;

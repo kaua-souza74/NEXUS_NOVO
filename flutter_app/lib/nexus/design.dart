@@ -220,14 +220,19 @@ class PhotoBanner extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       Row(children: [
-                        Text(eyebrow.toUpperCase(),
-                            style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 9,
-                                letterSpacing: 1.8,
-                                fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        if (trailing != null) trailing!
+                        Expanded(
+                            child: Text(eyebrow.toUpperCase(),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 9,
+                                    letterSpacing: 1.8,
+                                    fontWeight: FontWeight.w600))),
+                        if (trailing != null) ...[
+                          const SizedBox(width: 8),
+                          trailing!
+                        ]
                       ]),
                       const SizedBox(height: 7),
                       Text(title,
