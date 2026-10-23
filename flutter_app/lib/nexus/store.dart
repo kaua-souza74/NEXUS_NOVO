@@ -82,7 +82,7 @@ class AlertData {
 
 /// Uma única fonte de dados para todas as telas. Sem sorteios durante render.
 class NexusStore extends ChangeNotifier {
-  static const _physicalSpaceId = 'room101';
+  static const _physicalSpaceId = 'test-bench';
 
   NexusStore({this.repository, bool autoStart = true}) {
     _seed();
@@ -285,11 +285,9 @@ class NexusStore extends ChangeNotifier {
           ..name = row['name']?.toString() ?? id
           ..spaceId = room.id
           ..databaseOnline = databaseOnline;
-        if (target.physical) {
-          target
-            ..lastSeen = lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0)
-            ..online = databaseOnline;
-        }
+        target
+          ..lastSeen = lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0)
+          ..online = databaseOnline;
         room
           ..physical = room.id == _physicalSpaceId
           ..simulated = !room.physical;
@@ -314,7 +312,7 @@ class NexusStore extends ChangeNotifier {
         final device = deviceId == null ? null : byDatabaseDeviceId[deviceId];
         if (device == null) continue;
         final room = spaces.firstWhere((space) => space.id == device.spaceId);
-        if (!room.physical) continue;
+        if (!room.databaseBacked) continue;
         final type = row['sensor_type']?.toString() ?? '';
         final value = row['value_numeric'];
         final boolean = row['value_boolean'];
@@ -355,7 +353,6 @@ class NexusStore extends ChangeNotifier {
         }
       }
       for (final room in byDatabaseSpaceId.values) {
-        if (!room.physical) continue;
         final roomDevices = devices
             .where(
               (device) => device.databaseBacked && device.spaceId == room.id,
@@ -427,10 +424,16 @@ class NexusStore extends ChangeNotifier {
   };
 
   static String _spaceType(String? value) => switch (value) {
-    'room' => 'Hospedagem',
-    'reception' => 'Recepção',
+    'test' => 'Teste físico',
+    'pool' => 'Lazer',
+    'lobby' || 'reception' => 'Recepção',
     'restaurant' => 'Restaurante',
     'corridor' => 'Circulação',
+    'gym' || 'spa' => 'Bem-estar',
+    'conference' => 'Eventos',
+    'garden' || 'outdoor' => 'Área externa',
+    'laundry' || 'kitchen' || 'storage' => 'Serviço',
+    'parking' => 'Estacionamento',
     _ => 'Área comum',
   };
 
@@ -444,12 +447,11 @@ class NexusStore extends ChangeNotifier {
         humidity: 58,
         light: 742,
         presence: true,
-        deviceCount: 3,
       ),
       SpaceData(
-        id: 'room101',
-        name: 'Quarto 101',
-        type: 'Hospedagem',
+        id: 'test-bench',
+        name: 'Sala de Testes',
+        type: 'Teste físico',
         temperature: 22.1,
         humidity: 55,
         light: 180,
@@ -459,9 +461,9 @@ class NexusStore extends ChangeNotifier {
         physical: true,
       ),
       SpaceData(
-        id: 'room102',
-        name: 'Quarto 102',
-        type: 'Hospedagem',
+        id: 'parking',
+        name: 'Estacionamento',
+        type: 'Estacionamento',
         temperature: 22.8,
         humidity: 53,
         light: 320,
@@ -476,7 +478,6 @@ class NexusStore extends ChangeNotifier {
         light: 650,
         presence: true,
         online: false,
-        deviceCount: 2,
       ),
       SpaceData(
         id: 'restaurant',
@@ -486,7 +487,6 @@ class NexusStore extends ChangeNotifier {
         humidity: 57,
         light: 590,
         presence: true,
-        deviceCount: 2,
       ),
       SpaceData(
         id: 'pool',
@@ -496,7 +496,6 @@ class NexusStore extends ChangeNotifier {
         humidity: 66,
         light: 920,
         presence: true,
-        deviceCount: 2,
       ),
       SpaceData(
         id: 'corridor',
@@ -524,7 +523,6 @@ class NexusStore extends ChangeNotifier {
         humidity: 49,
         light: 120,
         presence: false,
-        deviceCount: 2,
       ),
       SpaceData(
         id: 'garden',
@@ -543,7 +541,6 @@ class NexusStore extends ChangeNotifier {
         humidity: 60,
         light: 220,
         presence: true,
-        deviceCount: 2,
       ),
       SpaceData(
         id: 'laundry',
@@ -553,17 +550,42 @@ class NexusStore extends ChangeNotifier {
         humidity: 64,
         light: 560,
         presence: true,
-        deviceCount: 2,
+      ),
+      SpaceData(
+        id: 'kitchen',
+        name: 'Cozinha',
+        type: 'Serviço',
+        temperature: 25.4,
+        humidity: 59,
+        light: 710,
+        presence: true,
+      ),
+      SpaceData(
+        id: 'outdoor',
+        name: 'Área externa',
+        type: 'Área externa',
+        temperature: 26.1,
+        humidity: 57,
+        light: 980,
+        presence: false,
       ),
     ]);
     final now = DateTime.now();
+    var simulatedDeviceNumber = 2;
     for (var i = 0; i < spaces.length; i++) {
       final s = spaces[i];
+      final deviceId = s.id == _physicalSpaceId
+          ? 'ESP32-00'
+          : s.id == 'pool'
+          ? 'ESP32-001'
+          : 'SIM-ESP32-${(simulatedDeviceNumber++).toString().padLeft(3, '0')}';
       devices.add(
         DeviceData(
-          'ESP32-${(i + 1).toString().padLeft(3, '0')}',
+          deviceId,
           s.id,
           online: s.online,
+          physical: s.physical,
+          name: s.physical ? 'ESP32-00 físico' : deviceId,
         ),
       );
       s.lastReading = s.online
@@ -590,19 +612,6 @@ class NexusStore extends ChangeNotifier {
         ),
       ]);
     }
-    var next = 13;
-    for (final s in spaces) {
-      for (var j = 1; j < s.deviceCount; j++) {
-        devices.add(
-          DeviceData(
-            'ESP32-${next.toString().padLeft(3, '0')}',
-            s.id,
-            online: s.online,
-          ),
-        );
-        next++;
-      }
-    }
     for (final d in devices.where((d) => !d.online)) {
       d.lastSeen = now.subtract(const Duration(minutes: 23));
     }
@@ -610,7 +619,7 @@ class NexusStore extends ChangeNotifier {
       'heat-conference',
       'Temperatura elevada',
       'conference',
-      'ESP32-008',
+      devicesIn('conference').first.id,
       'A temperatura atingiu 28,7 °C. Faixa de conforto: 20–26 °C.',
       AlertLevel.critical,
     );
@@ -618,7 +627,7 @@ class NexusStore extends ChangeNotifier {
       'offline-gym',
       'Dispositivo offline',
       'gym',
-      'ESP32-004',
+      devicesIn('gym').first.id,
       'Sem comunicação há 23 minutos. A última leitura foi preservada.',
       AlertLevel.warning,
     );
@@ -636,15 +645,6 @@ class NexusStore extends ChangeNotifier {
         ),
       );
     }
-    devices.add(
-      DeviceData(
-        'ESP32-00',
-        'room101',
-        online: false,
-        physical: true,
-        name: 'Arduino físico',
-      ),
-    );
   }
 
   void _alert(
@@ -682,7 +682,7 @@ class NexusStore extends ChangeNotifier {
     updatedAt = DateTime.now();
     for (var i = 0; i < spaces.length; i++) {
       final s = spaces[i];
-      if (!s.online || s.physical) continue;
+      if (!s.online || s.physical || s.databaseBacked) continue;
       s.temperature = (s.temperature + math.sin((tick + i) / 3) * 0.08)
           .clamp(18, 32)
           .toDouble();
@@ -697,7 +697,9 @@ class NexusStore extends ChangeNotifier {
       s.history.add(s.temperature);
       if (s.history.length > 48) s.history.removeAt(0);
     }
-    for (final d in devices.where((d) => d.online && !d.physical)) {
+    for (final d in devices.where(
+      (d) => d.online && !d.physical && !d.databaseBacked,
+    )) {
       d.lastSeen = updatedAt;
       d.messages += 3;
     }
@@ -743,7 +745,7 @@ class NexusStore extends ChangeNotifier {
         'offline-gym',
         'Dispositivo offline',
         'gym',
-        'ESP32-004',
+        devicesIn('gym').first.id,
         'A conexão MQTT foi interrompida. Última leitura preservada.',
         AlertLevel.warning,
       );
@@ -765,7 +767,7 @@ class NexusStore extends ChangeNotifier {
         'door-storage',
         'Porta aberta',
         'storage',
-        'ESP32-009',
+        devicesIn('storage').first.id,
         'A porta de acesso ao depósito está aberta.',
         AlertLevel.warning,
       );
@@ -805,7 +807,7 @@ class NexusStore extends ChangeNotifier {
             'heat-conference',
             'Temperatura elevada',
             s.id,
-            'ESP32-008',
+            devicesIn(s.id).first.id,
             'A temperatura atingiu 28,7 °C. Faixa de conforto: 20–26 °C.',
             AlertLevel.critical,
           );
@@ -815,7 +817,7 @@ class NexusStore extends ChangeNotifier {
         _door();
         break;
       case DemoScenario.presence:
-        final s = space('room102');
+        final s = space('parking');
         if (!s.physical) {
           s.presence = !s.presence;
           _event(
@@ -834,12 +836,16 @@ class NexusStore extends ChangeNotifier {
         break;
     }
     updatedAt = DateTime.now();
-    for (final s in spaces.where((s) => s.online && !s.physical)) {
+    for (final s in spaces.where(
+      (s) => s.online && !s.physical && !s.databaseBacked,
+    )) {
       s.lastReading = updatedAt;
       s.history.add(s.temperature);
       if (s.history.length > 48) s.history.removeAt(0);
     }
-    for (final d in devices.where((d) => d.online && !d.physical)) {
+    for (final d in devices.where(
+      (d) => d.online && !d.physical && !d.databaseBacked,
+    )) {
       d.lastSeen = updatedAt;
     }
     notifyListeners();

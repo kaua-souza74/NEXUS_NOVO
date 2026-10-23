@@ -4,7 +4,7 @@ import mqtt from "mqtt";
 import { signMqttMessage, type SensorPayload } from "../src/lib/iot/ingest";
 
 const brokerUrl = process.env.MQTT_BROKER_URL ?? "mqtt://broker.emqx.io:1883";
-const topic = process.env.MQTT_TOPIC ?? "nexus/vista-real/quarto-101/ESP32-001/readings";
+const topic = process.env.MQTT_TOPIC ?? "nexus/vista-real/piscina/ESP32-001/readings";
 const mode = process.argv[2] ?? "valid";
 const deviceId = "ESP32-001";
 const token = process.env.NEXUS_DEVICE_TOKEN_ESP32_001;

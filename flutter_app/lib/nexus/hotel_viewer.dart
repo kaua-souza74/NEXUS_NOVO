@@ -17,8 +17,10 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
   static const _planSize = Size(760, 507);
   static const _positions = <String, Offset>{
     'lobby': Offset(.13, .50),
-    'room101': Offset(.36, .17),
-    'room102': Offset(.49, .17),
+    'test-bench': Offset(.36, .17),
+    'parking': Offset(.49, .17),
+    'kitchen': Offset(.69, .45),
+    'outdoor': Offset(.17, .78),
     'restaurant': Offset(.68, .13),
     'garden': Offset(.49, .49),
     'conference': Offset(.31, .82),

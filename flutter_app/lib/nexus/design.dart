@@ -228,9 +228,9 @@ class Surface extends StatelessWidget {
                       child: DecoratedBox(
                           decoration: BoxDecoration(
                               gradient: LinearGradient(colors: [
-                    N.deep.withValues(alpha: .91),
-                    N.wine.withValues(alpha: .76),
-                    N.deep.withValues(alpha: .57)
+                    N.deep.withValues(alpha: .72),
+                    N.wine.withValues(alpha: .47),
+                    N.deep.withValues(alpha: .52)
                   ], begin: Alignment.bottomLeft, end: Alignment.topRight))))
                 ],
                 Padding(
@@ -473,17 +473,49 @@ class FilterPills extends StatelessWidget {
 
 IconData spaceIcon(String id) => switch (id) {
       'lobby' => Icons.door_front_door_outlined,
-      'room101' || 'room102' => Icons.bed_outlined,
+      'test-bench' => Icons.developer_board_outlined,
+      'parking' => Icons.local_parking_outlined,
+      'kitchen' => Icons.kitchen_outlined,
+      'outdoor' || 'garden' => Icons.yard_outlined,
+      'corridor' => Icons.route_outlined,
       'gym' => Icons.fitness_center_outlined,
       'restaurant' => Icons.restaurant_outlined,
       'pool' => Icons.pool_outlined,
       'conference' => Icons.event_outlined,
-      'garden' => Icons.yard_outlined,
       'spa' => Icons.spa_outlined,
       'storage' => Icons.inventory_2_outlined,
       'laundry' => Icons.local_laundry_service_outlined,
       _ => Icons.sensor_door_outlined
     };
+
+String spaceImagePath(SpaceData space) {
+  final key = '${space.id} ${space.name} ${space.type}'.toLowerCase();
+  if (key.contains('pool') || key.contains('piscina')) {
+    return 'assets/images/hotel-pool.png';
+  }
+  if (key.contains('gym') || key.contains('academia')) {
+    return 'assets/images/hotel-gym.png';
+  }
+  if (key.contains('restaurant') || key.contains('restaurante')) {
+    return 'assets/images/hotel-restaurant.png';
+  }
+  if (key.contains('conference') ||
+      key.contains('event') ||
+      key.contains('salão')) {
+    return 'assets/images/hotel-events.png';
+  }
+  if (key.contains('garden') ||
+      key.contains('jardim') ||
+      key.contains('outdoor') ||
+      key.contains('externa')) {
+    return 'assets/images/hotel-garden.png';
+  }
+  if (key.contains('lobby') || key.contains('recepção')) {
+    return 'assets/images/lobby-evening.png';
+  }
+  return 'assets/images/hotel-corridor.png';
+}
+
 IconData eventIcon(String kind) => switch (kind) {
       'presence' => Icons.person_outline,
       'door' => Icons.sensor_door_outlined,
@@ -502,47 +534,6 @@ String alertLevelLabel(AlertLevel level) => switch (level) {
       AlertLevel.info => 'Informativo'
     };
 
-class SpaceHero extends StatelessWidget {
-  const SpaceHero(this.space, {super.key, this.dark = false});
-  final SpaceData space;
-  final bool dark;
-  @override
-  Widget build(BuildContext context) => Hero(
-      tag: 'space-${space.id}',
-      child: Material(
-          color: dark ? N.wine : const Color(0xFFF7F1EE),
-          borderRadius: BorderRadius.circular(20),
-          child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(children: [
-                Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                        color: dark ? Colors.white12 : Colors.white,
-                        borderRadius: BorderRadius.circular(14)),
-                    child: Icon(spaceIcon(space.id),
-                        color: dark ? Colors.white : N.wine, size: 23)),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                      Text(space.name,
-                          style: TextStyle(
-                              color: dark ? Colors.white : N.ink,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: -0.3)),
-                      const SizedBox(height: 4),
-                      Text(space.type,
-                          style: TextStyle(
-                              color: dark ? Colors.white60 : N.muted,
-                              fontSize: 11))
-                    ]))
-              ]))));
-}
-
 class SpaceCard extends StatelessWidget {
   const SpaceCard(this.space,
       {super.key, required this.onTap, this.alert = false});
@@ -550,50 +541,132 @@ class SpaceCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool alert;
   @override
-  Widget build(BuildContext context) => Surface(
-      padding: const EdgeInsets.all(12),
-      onTap: onTap,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SpaceHero(space),
-        const SizedBox(height: 14),
-        Row(children: [
-          Pill(
-              !space.online
-                  ? 'Offline'
-                  : space.presence
-                      ? 'Ocupado'
-                      : 'Livre',
-              color: !space.online
-                  ? N.muted
-                  : space.presence
-                      ? N.green
-                      : N.wine),
-          const Spacer(),
-          if (alert) const Icon(Icons.error_outline, color: N.amber, size: 18)
-        ]),
-        const SizedBox(height: 13),
-        Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          AnimatedNumber(space.temperature,
-              decimals: 1,
-              suffix: '°',
-              style: const TextStyle(
-                  fontSize: 31,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: -1.5)),
-          const Spacer(),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text(
-                '${space.deviceCount} ${space.deviceCount == 1 ? 'dispositivo' : 'dispositivos'}',
-                style: const TextStyle(fontSize: 11, color: N.muted)),
-            const SizedBox(height: 5),
-            Text(
-                space.online
-                    ? 'Atualizado ${ageLabel(space.lastReading)}'
-                    : 'Último dado ${ageLabel(space.lastReading)}',
-                style: const TextStyle(fontSize: 10, color: N.muted))
-          ])
-        ])
-      ]));
+  Widget build(BuildContext context) => TapScale(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: N.deep.withValues(alpha: .14),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: SizedBox(
+              height: 226,
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.asset(
+                    spaceImagePath(space),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => ColoredBox(
+                      color: N.wine,
+                      child: Icon(spaceIcon(space.id), color: Colors.white54),
+                    ),
+                  ),
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Color(0x240E0B0C),
+                          Color(0x100E0B0C),
+                          Color(0xD91B1416),
+                        ],
+                        stops: [0, .42, 1],
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 14,
+                    left: 14,
+                    child: Pill(
+                      !space.online
+                          ? 'Offline'
+                          : space.presence
+                              ? 'Ocupado'
+                              : 'Livre',
+                      color: !space.online
+                          ? N.muted
+                          : space.presence
+                              ? N.green
+                              : N.wine,
+                    ),
+                  ),
+                  if (alert)
+                    const Positioned(
+                      top: 15,
+                      right: 15,
+                      child: Icon(
+                        Icons.error_outline_rounded,
+                        color: Color(0xFFFFD79A),
+                        size: 21,
+                      ),
+                    ),
+                  Positioned(
+                    left: 18,
+                    right: 18,
+                    bottom: 17,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                space.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 21,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -.4,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${space.type} · ${space.deviceCount} ${space.deviceCount == 1 ? 'dispositivo' : 'dispositivos'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        AnimatedNumber(
+                          space.temperature,
+                          decimals: 1,
+                          suffix: '°',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 27,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: -1,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class Metric extends StatelessWidget {
@@ -615,28 +688,73 @@ class Metric extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Surface(
       dark: dark,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Icon(icon, color: dark ? N.peach : N.wine, size: 21),
-        const SizedBox(height: 20),
-        AnimatedNumber(value,
-            decimals: decimals,
-            suffix: unit,
-            style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.w500,
-                letterSpacing: -1.3,
-                color: dark ? Colors.white : N.ink)),
-        const SizedBox(height: 5),
-        Text(label,
-            style: TextStyle(
-                fontSize: 12, color: dark ? Colors.white70 : N.muted)),
-        if (note != null) ...[
-          const SizedBox(height: 10),
-          Text(note!,
-              style: TextStyle(
-                  fontSize: 10, color: dark ? Colors.white54 : N.muted))
-        ]
-      ]));
+      padding: EdgeInsets.zero,
+      child: SizedBox(
+        width: double.infinity,
+        height: 174,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(icon, color: dark ? N.peach : N.wine, size: 21),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: AnimatedNumber(
+                        value,
+                        decimals: decimals,
+                        suffix: unit,
+                        style: TextStyle(
+                          fontSize: 32,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: -1.3,
+                          color: dark ? Colors.white : N.ink,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  SizedBox(
+                    height: 30,
+                    child: Center(
+                      child: Text(
+                        label,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: dark ? Colors.white70 : N.muted,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (note != null) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      note!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: dark ? Colors.white54 : N.muted,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 }
 
 class ResponsiveGrid extends StatelessWidget {

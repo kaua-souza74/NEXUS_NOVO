@@ -5,7 +5,7 @@ import { signMqttMessage } from "../src/lib/iot/mqtt-auth";
 
 export const DEVICE_ID = "ESP32-001";
 export const MAX_SERIAL_LINE_BYTES = 4096;
-export const EXPECTED_TOPIC = `nexus/vista-real/quarto-101/${DEVICE_ID}/readings`;
+export const EXPECTED_TOPIC = `nexus/vista-real/piscina/${DEVICE_ID}/readings`;
 
 const REQUIRED_FIELDS = [
   "door_open",

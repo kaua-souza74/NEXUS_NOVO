@@ -19,7 +19,7 @@ class HomePage extends StatelessWidget {
     final s = NexusScope.of(context);
     return PageScroll(
       key: const PageStorageKey('home'),
-      horizontalPadding: 12,
+      horizontalPadding: 10,
       children: [
         Row(
           children: [
@@ -183,22 +183,29 @@ class HomePage extends StatelessWidget {
               onAction: () => onTab(1),
             ),
             SizedBox(
-              height: 229,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: 4,
-                separatorBuilder: (_, i) => const SizedBox(width: 12),
-                itemBuilder: (context, i) {
-                  final space = s.space(
-                    ['room101', 'lobby', 'restaurant', 'gym'][i],
-                  );
-                  return SizedBox(
-                    width: 250,
-                    child: SpaceCard(
-                      space,
-                      alert: s.alertsIn(space.id).isNotEmpty,
-                      onTap: () => openPage(context, SpaceDetail(space.id)),
-                    ),
+              height: 238,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final cardWidth = constraints.maxWidth
+                      .clamp(320.0, 460.0)
+                      .toDouble();
+                  return ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: 4,
+                    separatorBuilder: (_, i) => const SizedBox(width: 12),
+                    itemBuilder: (context, i) {
+                      final space = s.space(
+                        ['test-bench', 'lobby', 'pool', 'restaurant'][i],
+                      );
+                      return SizedBox(
+                        width: cardWidth,
+                        child: SpaceCard(
+                          space,
+                          alert: s.alertsIn(space.id).isNotEmpty,
+                          onTap: () => openPage(context, SpaceDetail(space.id)),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -551,7 +558,7 @@ class _DevicesPageState extends State<DevicesPage> {
     return PageScroll(
       children: [
         PhotoBanner(
-          image: 'assets/images/hotel-corridor.png',
+          image: 'assets/images/iot-device-professional.png',
           eyebrow: '${s.databaseDeviceCount} sensores · ESP32-00 físico',
           title: 'Dispositivos',
           subtitle: 'Conexões e leituras dos seus ambientes.',
@@ -627,13 +634,16 @@ class DeviceCard extends StatelessWidget {
       child: bodyColumn([
         Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: N.canvas,
-                borderRadius: BorderRadius.circular(14),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.asset(
+                device.physical
+                    ? 'assets/images/iot-device-professional.png'
+                    : spaceImagePath(s.space(device.spaceId)),
+                width: 58,
+                height: 58,
+                fit: BoxFit.cover,
               ),
-              child: const Icon(Icons.memory_rounded, color: N.wine),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -937,37 +947,135 @@ class _SpaceDetailState extends State<SpaceDetail> {
         child: bodyColumn([
           Surface(
             dark: true,
-            child: bodyColumn([
-              SpaceHero(v, dark: true),
-              const SizedBox(height: 22),
-              Row(
-                children: [
-                  Pill(
-                    v.online ? 'Monitoramento ativo' : 'Sem comunicação',
-                    dark: true,
-                  ),
-                  const Spacer(),
-                  Icon(spaceIcon(v.id), size: 42, color: Colors.white24),
-                ],
-              ),
-              const SizedBox(height: 22),
-              AnimatedNumber(
-                v.temperature,
-                decimals: 1,
-                suffix: '°C',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 61,
-                  letterSpacing: -3,
+            backgroundImage: spaceImagePath(v),
+            padding: EdgeInsets.zero,
+            child: SizedBox(
+              height: 356,
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                v.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -.7,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                v.type,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: .16),
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          child: Icon(
+                            spaceIcon(v.id),
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Row(
+                      children: [
+                        Pill(
+                          v.online ? 'Monitoramento ativo' : 'Sem comunicação',
+                          dark: true,
+                        ),
+                        const Spacer(),
+                        Text(
+                          v.presence ? 'Ocupado' : 'Livre',
+                          style: TextStyle(
+                            color: v.presence
+                                ? const Color(0xFFBFE3CF)
+                                : Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    AnimatedNumber(
+                      v.temperature,
+                      decimals: 1,
+                      suffix: '°C',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 62,
+                        height: 1,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: -3,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      v.online
+                          ? 'Atualizado ${timeLabel(v.lastReading)}'
+                          : 'Última leitura ${ageLabel(v.lastReading)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    GlassPanel(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 11,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _HeroStat(
+                              '${v.humidity.round()}%',
+                              'Umidade',
+                              Colors.white,
+                            ),
+                          ),
+                          Expanded(
+                            child: _HeroStat(
+                              '${v.light} lx',
+                              'Luminosidade',
+                              Colors.white,
+                            ),
+                          ),
+                          Expanded(
+                            child: _HeroStat(
+                              '${v.deviceCount}',
+                              'Dispositivos',
+                              Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              Text(
-                v.online
-                    ? 'Última leitura ${timeLabel(v.lastReading)}'
-                    : 'Última leitura preservada · ${ageLabel(v.lastReading)}',
-                style: const TextStyle(fontSize: 12, color: Colors.white60),
-              ),
-            ]),
+            ),
           ),
           const Section('Sensores do ambiente'),
           ResponsiveGrid(
@@ -1056,16 +1164,54 @@ class _StatusSensor extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Surface(
     color: active ? const Color(0xFFECE1DE) : Colors.white,
-    child: bodyColumn([
-      Icon(icon, color: N.wine),
-      const SizedBox(height: 20),
-      Text(
-        value,
-        style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w600),
+    padding: EdgeInsets.zero,
+    child: SizedBox(
+      height: 174,
+      width: double.infinity,
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(icon, color: N.wine, size: 21),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 7),
+                SizedBox(
+                  height: 22,
+                  child: Center(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 12, color: N.muted),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-      const SizedBox(height: 6),
-      Text(label, style: const TextStyle(fontSize: 12, color: N.muted)),
-    ]),
+    ),
   );
 }
 
@@ -1103,6 +1249,16 @@ class _Esp32PhysicalTestPageState extends State<Esp32PhysicalTestPage> {
       back: true,
       subtitle: 'Arduino físico · testes de bancada',
     ),
+    ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Image.asset(
+        'assets/images/iot-device-professional.png',
+        width: double.infinity,
+        height: 210,
+        fit: BoxFit.cover,
+      ),
+    ),
+    gap,
     Surface(
       dark: true,
       child: bodyColumn([
@@ -1204,7 +1360,10 @@ class _Esp32PhysicalTestPageState extends State<Esp32PhysicalTestPage> {
         children: [
           KeyValue('Identificador', 'ESP32-00'),
           KeyValue('Transporte', 'MQTT · broker.emqx.io:1883'),
-          KeyValue('Tópico', 'nexus/vista-real/quarto-101/ESP32-00/readings'),
+          KeyValue(
+            'Tópico',
+            'nexus/vista-real/sala-de-testes/ESP32-00/readings',
+          ),
           KeyValue('Sensores', 'DHT11 · LDR · botão de presença'),
           KeyValue('Pinos', 'GPIO 4 · 27 · 34'),
           KeyValue('Persistência', 'Após provisionar device e credencial'),
@@ -1309,7 +1468,7 @@ class DeviceDetail extends StatelessWidget {
               KeyValue(
                 'Tópico',
                 d.databaseBacked
-                    ? 'nexus/vista-real/quarto-101/ESP32-001/readings'
+                    ? 'nexus/vista-real/piscina/ESP32-001/readings'
                     : '—',
               ),
               KeyValue(
@@ -1657,20 +1816,6 @@ class ProfilePage extends StatelessWidget {
               ),
               value: s.reduceMotion,
               onChanged: (v) => s.updatePreferences(motion: v),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: const Icon(Icons.apartment_outlined, color: N.wine),
-              title: const Text(
-                'Visualizador do hotel',
-                style: TextStyle(fontSize: 14),
-              ),
-              subtitle: const Text(
-                'Mostrar atalho na página inicial',
-                style: TextStyle(fontSize: 11, color: N.muted),
-              ),
-              value: s.showHotelViewer,
-              onChanged: (v) => s.updatePreferences(showHotelViewer: v),
             ),
           ]),
         ),

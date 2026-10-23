@@ -48,7 +48,7 @@ do ESP32.
 ## Protocolo NEXUS
 
 - Broker: `broker.emqx.io:1883` (TCP sem TLS, para demo).
-- Tópico: `nexus/vista-real/quarto-101/ESP32-00/readings`.
+- Tópico: `nexus/vista-real/sala-de-testes/ESP32-00/readings`.
 - O relógio é sincronizado por NTP antes de publicar; o backend aceita timestamp
   dentro de ±60 s e nonce único.
 - A canonical message segue a ordem do backend:

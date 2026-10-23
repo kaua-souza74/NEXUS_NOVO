@@ -22,7 +22,7 @@ namespace {
 constexpr char DEVICE_ID[] = "ESP32-00";
 constexpr char BROKER_HOST[] = "broker.emqx.io";
 constexpr uint16_t BROKER_PORT = 1883;
-constexpr char MQTT_TOPIC[] = "nexus/vista-real/quarto-101/ESP32-00/readings";
+constexpr char MQTT_TOPIC[] = "nexus/vista-real/sala-de-testes/ESP32-00/readings";
 
 constexpr uint8_t DHT_PIN = 4;
 constexpr uint8_t LIGHT_PIN = 34;
