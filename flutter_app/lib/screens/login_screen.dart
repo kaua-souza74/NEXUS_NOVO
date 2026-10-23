@@ -15,7 +15,6 @@ class _LoginScreenState extends State<LoginScreen>
   static const _wine = Color(0xFF4F3139);
   static const _deep = Color(0xFF2E1D24);
   static const _rose = Color(0xFF92656B);
-  static const _peach = Color(0xFFD8B5A0);
 
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
@@ -26,6 +25,26 @@ class _LoginScreenState extends State<LoginScreen>
   bool _passwordVisible = false;
   String? _error;
   String? _notice;
+
+  String _authErrorMessage(
+    AuthException error, {
+    bool passwordReset = false,
+  }) {
+    final message = error.message.toLowerCase();
+    if (message.contains('invalid login credentials')) {
+      return 'Email ou senha incorretos.';
+    }
+    if (message.contains('email not confirmed')) {
+      return 'Confirme seu email antes de entrar.';
+    }
+    if (message.contains('too many requests') ||
+        message.contains('rate limit')) {
+      return 'Muitas tentativas. Aguarde um pouco e tente novamente.';
+    }
+    return passwordReset
+        ? 'Não foi possível enviar o link agora. Tente novamente mais tarde.'
+        : 'Não foi possível entrar. Verifique seus dados e tente novamente.';
+  }
 
   @override
   void initState() {
@@ -58,7 +77,7 @@ class _LoginScreenState extends State<LoginScreen>
         password: _passwordController.text,
       );
     } on AuthException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted) setState(() => _error = _authErrorMessage(error));
     } catch (_) {
       if (mounted) {
         setState(() => _error =
@@ -90,7 +109,9 @@ class _LoginScreenState extends State<LoginScreen>
             _notice = 'Se o email estiver cadastrado, enviaremos um link de recuperação.');
       }
     } on AuthException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted) {
+        setState(() => _error = _authErrorMessage(error, passwordReset: true));
+      }
     } catch (_) {
       if (mounted) setState(() => _error = 'Não foi possível enviar o link agora.');
     } finally {
@@ -128,42 +149,60 @@ class _LoginScreenState extends State<LoginScreen>
           SafeArea(
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final wide = constraints.maxWidth >= 820;
-                return Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1120),
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: wide ? 56 : 22,
-                        vertical: 24,
+                final wide = constraints.maxWidth >= 1020 &&
+                    constraints.maxHeight >= 680;
+                final compact = constraints.maxHeight < 760;
+                final horizontalPadding =
+                    constraints.maxWidth >= 1020 ? 56.0 : 22.0;
+                final verticalPadding = compact ? 12.0 : 24.0;
+
+                if (wide) {
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1120),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 56,
+                          vertical: 24,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(child: _welcomePanel()),
+                            const SizedBox(width: 54),
+                            SizedBox(width: 430, child: _loginCard()),
+                          ],
+                        ),
                       ),
-                      child: wide
-                          ? Row(
-                              children: [
-                                Expanded(child: _welcomePanel()),
-                                const SizedBox(width: 54),
-                                SizedBox(width: 430, child: _loginCard()),
-                              ],
-                            )
-                          : SingleChildScrollView(
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minHeight: constraints.maxHeight - 48,
-                                ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    _mobileWelcome(),
-                                    const SizedBox(height: 26),
-                                    ConstrainedBox(
-                                      constraints:
-                                          const BoxConstraints(maxWidth: 460),
-                                      child: _loginCard(),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
+                    ),
+                  );
+                }
+
+                return SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalPadding,
+                    vertical: verticalPadding,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: math.max(
+                        0.0,
+                        constraints.maxHeight - verticalPadding * 2,
+                      ).toDouble(),
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 460),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _mobileWelcome(compact: compact),
+                            SizedBox(height: compact ? 18 : 26),
+                            _loginCard(compact: compact),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 );
@@ -184,7 +223,7 @@ class _LoginScreenState extends State<LoginScreen>
             _brand(),
             const SizedBox(height: 76),
             const Text(
-              'A inteligência\ndo seu hotel,\nem um só lugar.',
+              'A visão do seu hotel, em um só lugar.',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 48,
@@ -212,16 +251,16 @@ class _LoginScreenState extends State<LoginScreen>
         ),
       );
 
-  Widget _mobileWelcome() => Column(
+  Widget _mobileWelcome({required bool compact}) => Column(
         children: [
           _brand(),
-          const SizedBox(height: 26),
-          const Text(
+          SizedBox(height: compact ? 18 : 26),
+          Text(
             'Bem-vindo de volta',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.white,
-              fontSize: 27,
+              fontSize: compact ? 24 : 27,
               letterSpacing: -.6,
               fontWeight: FontWeight.w600,
               fontFamily: 'Georgia',
@@ -262,8 +301,13 @@ class _LoginScreenState extends State<LoginScreen>
         ],
       );
 
-  Widget _loginCard() => Container(
-        padding: const EdgeInsets.fromLTRB(28, 30, 28, 25),
+  Widget _loginCard({bool compact = false}) => Container(
+        padding: EdgeInsets.fromLTRB(
+          compact ? 22 : 28,
+          compact ? 20 : 30,
+          compact ? 22 : 28,
+          compact ? 17 : 25,
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFFFCFAF8),
           borderRadius: BorderRadius.circular(30),
@@ -282,24 +326,24 @@ class _LoginScreenState extends State<LoginScreen>
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'Acesse sua conta',
                 style: TextStyle(
                   color: _deep,
-                  fontSize: 25,
+                  fontSize: compact ? 23 : 25,
                   letterSpacing: -.7,
                   fontWeight: FontWeight.w600,
                   fontFamily: 'Georgia',
                 ),
               ),
-              const SizedBox(height: 7),
+              SizedBox(height: compact ? 5 : 7),
               const Text(
                 'Use suas credenciais para continuar.',
                 style: TextStyle(color: Color(0xFF887A7D), fontSize: 13),
               ),
-              const SizedBox(height: 25),
+              SizedBox(height: compact ? 16 : 25),
               _fieldLabel('EMAIL'),
-              const SizedBox(height: 8),
+              SizedBox(height: compact ? 6 : 8),
               TextFormField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -308,6 +352,7 @@ class _LoginScreenState extends State<LoginScreen>
                 decoration: _inputDecoration(
                   hint: 'seu@email.com',
                   icon: Icons.mail_outline_rounded,
+                  compact: compact,
                 ),
                 validator: (value) => value == null || !value.contains('@')
                     ? 'Informe um email válido.'
@@ -321,9 +366,9 @@ class _LoginScreenState extends State<LoginScreen>
                   }
                 },
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: compact ? 12 : 18),
               _fieldLabel('SENHA'),
-              const SizedBox(height: 8),
+              SizedBox(height: compact ? 6 : 8),
               TextFormField(
                 controller: _passwordController,
                 obscureText: !_passwordVisible,
@@ -332,6 +377,7 @@ class _LoginScreenState extends State<LoginScreen>
                 decoration: _inputDecoration(
                   hint: 'Sua senha',
                   icon: Icons.lock_outline_rounded,
+                  compact: compact,
                 ).copyWith(
                   suffixIcon: IconButton(
                     tooltip: _passwordVisible ? 'Ocultar senha' : 'Mostrar senha',
@@ -355,7 +401,7 @@ class _LoginScreenState extends State<LoginScreen>
                   onPressed: _sendingReset ? null : _sendPasswordReset,
                   style: TextButton.styleFrom(
                     foregroundColor: _rose,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: EdgeInsets.symmetric(vertical: compact ? 7 : 12),
                     visualDensity: VisualDensity.compact,
                   ),
                   child: _sendingReset
@@ -375,7 +421,7 @@ class _LoginScreenState extends State<LoginScreen>
                 const SizedBox(height: 14),
               ],
               SizedBox(
-                height: 52,
+                height: compact ? 48 : 52,
                 child: FilledButton(
                   onPressed: _loading ? null : _signIn,
                   style: FilledButton.styleFrom(
@@ -396,18 +442,13 @@ class _LoginScreenState extends State<LoginScreen>
                             color: Colors.white,
                           ),
                         )
-                      : const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text('Entrar',
-                                style: TextStyle(fontWeight: FontWeight.w600)),
-                            SizedBox(width: 9),
-                            Icon(Icons.arrow_forward_rounded, size: 18),
-                          ],
+                      : const Text(
+                          'Entrar',
+                          style: TextStyle(fontWeight: FontWeight.w600),
                         ),
                 ),
               ),
-              const SizedBox(height: 19),
+              SizedBox(height: compact ? 12 : 19),
               const Row(
                 children: [
                   Expanded(child: Divider(color: Color(0xFFE9E1DE))),
@@ -423,14 +464,14 @@ class _LoginScreenState extends State<LoginScreen>
                   Expanded(child: Divider(color: Color(0xFFE9E1DE))),
                 ],
               ),
-              const SizedBox(height: 17),
+              SizedBox(height: compact ? 12 : 17),
               const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.verified_user_outlined,
                       size: 15, color: Color(0xFF8D777B)),
                   SizedBox(width: 7),
-                  Text('Conexão protegida pelo Supabase Auth',
+                  Text('Conexão segura da sua conta',
                       style: TextStyle(
                           color: Color(0xFF8D777B), fontSize: 11)),
                 ],
@@ -450,14 +491,21 @@ class _LoginScreenState extends State<LoginScreen>
         ),
       );
 
-  InputDecoration _inputDecoration({required String hint, required IconData icon}) =>
+  InputDecoration _inputDecoration({
+    required String hint,
+    required IconData icon,
+    bool compact = false,
+  }) =>
       InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: Color(0xFFB0A4A5), fontSize: 13),
         prefixIcon: Icon(icon, size: 19, color: const Color(0xFF9A8589)),
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: 15,
+          vertical: compact ? 12 : 15,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: const BorderSide(color: Color(0xFFE9E1DE)),
@@ -509,6 +557,10 @@ class _FeedbackBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isError ? const Color(0xFF9E4548) : const Color(0xFF527F69);
+    final displayMessage =
+        message.toLowerCase().contains('invalid login credentials')
+            ? 'Email ou senha incorretos.'
+            : message;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -522,7 +574,7 @@ class _FeedbackBox extends StatelessWidget {
               size: 17, color: color),
           const SizedBox(width: 9),
           Expanded(
-            child: Text(message,
+            child: Text(displayMessage,
                 style: TextStyle(color: color, fontSize: 12, height: 1.4)),
           ),
         ],

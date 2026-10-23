@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
@@ -29,6 +30,62 @@ class NexusScope extends InheritedNotifier<NexusStore> {
       context.dependOnInheritedWidgetOfExactType<NexusScope>()!.notifier!;
 }
 
+class NexusBackdrop extends StatefulWidget {
+  const NexusBackdrop({super.key});
+
+  @override
+  State<NexusBackdrop> createState() => _NexusBackdropState();
+}
+
+class _NexusBackdropState extends State<NexusBackdrop>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 18),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller
+        ..stop()
+        ..value = .5;
+    } else if (!_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          final phase = _controller.value;
+          final warmth = math.sin(phase * math.pi) * .035;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment(-1 + phase * .55, -1 + phase * .2),
+                end: Alignment(1 - phase * .45, 1 - phase * .35),
+                colors: [
+                  N.canvas,
+                  Color.lerp(N.canvas, N.peach, .16 + warmth)!,
+                  Color.lerp(N.canvas, N.rose, .045 + warmth / 3)!,
+                ],
+              ),
+            ),
+            child: const SizedBox.expand(),
+          );
+        },
+      );
+}
+
 void openPage(BuildContext context, Widget page) {
   final reduced = NexusScope.of(context).reduceMotion;
   Navigator.of(context).push(PageRouteBuilder(
@@ -58,7 +115,7 @@ class PageScroll extends StatelessWidget {
   Widget build(BuildContext context) => SingleChildScrollView(
       controller: controller,
       padding:
-          EdgeInsets.fromLTRB(horizontalPadding, 20, horizontalPadding, 122),
+          EdgeInsets.fromLTRB(horizontalPadding, 20, horizontalPadding, 28),
       child: Center(
           child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 900),
@@ -350,11 +407,10 @@ class Pill extends StatelessWidget {
       {super.key,
       this.color = N.green,
       this.dark = false,
-      this.dot = false,
       this.icon});
   final String text;
   final Color color;
-  final bool dark, dot;
+  final bool dark;
   final IconData? icon;
   @override
   Widget build(BuildContext context) => Container(
@@ -365,10 +421,6 @@ class Pill extends StatelessWidget {
               : color.withValues(alpha: 0.09),
           borderRadius: BorderRadius.circular(30)),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (dot) ...[
-          PulseDot(color: dark ? const Color(0xFFA7CFB7) : color),
-          const SizedBox(width: 6)
-        ],
         if (icon != null) ...[
           Icon(icon, size: 13, color: dark ? Colors.white : color),
           const SizedBox(width: 5)
@@ -379,44 +431,6 @@ class Pill extends StatelessWidget {
                 fontWeight: FontWeight.w600,
                 color: dark ? Colors.white : color))
       ]));
-}
-
-class PulseDot extends StatefulWidget {
-  const PulseDot({super.key, this.color = N.green});
-  final Color color;
-  @override
-  State<PulseDot> createState() => _PulseDotState();
-}
-
-class _PulseDotState extends State<PulseDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController controller = AnimationController(
-      vsync: this, duration: const Duration(milliseconds: 1800))
-    ..repeat(reverse: true);
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) => Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: widget.color,
-              boxShadow: MediaQuery.disableAnimationsOf(context)
-                  ? []
-                  : [
-                      BoxShadow(
-                          color: widget.color.withValues(
-                              alpha: 0.12 + controller.value * 0.14),
-                          blurRadius: 4,
-                          spreadRadius: controller.value * 2)
-                    ])));
 }
 
 class FilterPills extends StatelessWidget {
@@ -553,11 +567,7 @@ class SpaceCard extends StatelessWidget {
                   ? N.muted
                   : space.presence
                       ? N.green
-                      : N.wine,
-              dot: space.online),
-          const SizedBox(width: 7),
-          Pill(space.databaseBacked ? 'Supabase' : 'Demo',
-              color: space.databaseBacked ? N.wine : N.muted),
+                      : N.wine),
           const Spacer(),
           if (alert) const Icon(Icons.error_outline, color: N.amber, size: 18)
         ]),
@@ -684,8 +694,11 @@ class DataGate extends StatelessWidget {
           message: store.state == ViewState.error
               ? 'A conexão não respondeu. Tente carregar os dados novamente.'
               : 'Os dados aparecerão aqui assim que os sensores enviarem leituras.',
-          action: 'Carregar demonstração',
-          onAction: () => store.setState(ViewState.loading));
+          action: 'Atualizar leituras',
+          onAction: () {
+            store.setState(ViewState.loading);
+            unawaited(store.refreshFromDatabase());
+          });
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (store.state == ViewState.offline) ...[

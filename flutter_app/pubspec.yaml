@@ -63,6 +63,7 @@ flutter:
     - assets/images/hotel-corridor.png
     - assets/images/lobby-evening.png
     - assets/images/night-reception.png
+    - assets/images/hotel-floorplan.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -247,30 +247,34 @@ class _NexusShellState extends State<NexusShell> {
       ),
     );
     return Scaffold(
-      body: SafeArea(
-        child: wide
-            ? Row(
-                children: [
-                  sidebar,
-                  Expanded(child: content),
-                ],
-              )
-            : Stack(
-                children: [
-                  Positioned.fill(child: content),
-                  Positioned(
-                    left: 22,
-                    right: 22,
-                    bottom: 14,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 390),
-                        child: nav,
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          const Positioned.fill(child: NexusBackdrop()),
+          SafeArea(
+            child: wide
+                ? Row(
+                    children: [
+                      sidebar,
+                      Expanded(child: content),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      Expanded(child: content),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(22, 8, 22, 8),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 390),
+                            child: nav,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
+          ),
+        ],
       ),
     );
   }

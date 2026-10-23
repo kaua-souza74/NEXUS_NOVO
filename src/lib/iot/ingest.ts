@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 
-import {
-  signMqttMessage,
-  mqttSigningMessage,
-} from "./mqtt-auth";
+import { signMqttMessage } from "./mqtt-auth";
 
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -94,8 +91,8 @@ function isValidSensorPayload(
   if (
     typeof payload.temperature !== "number" ||
     !Number.isFinite(payload.temperature) ||
-    payload.temperature < -50 ||
-    payload.temperature > 100
+    payload.temperature < -40 ||
+    payload.temperature > 80
   ) {
     return false;
   }
@@ -224,31 +221,6 @@ export async function ingestDeviceReading(
   ) {
     const now = Date.now();
 
-    console.log(
-      "[NEXUS:IOT] MQTT auth debug:",
-      {
-        server_time_ms: now,
-        device_timestamp:
-          authentication.timestamp,
-        difference_ms:
-          now -
-          authentication.timestamp,
-        difference_seconds:
-          (
-            (now -
-              authentication.timestamp) /
-            1000
-          ),
-        nonce:
-          authentication.nonce,
-        signature_length:
-          typeof authentication.signature ===
-            "string"
-            ? authentication.signature.length
-            : null,
-      },
-    );
-
     if (
       !Number.isSafeInteger(
         authentication.timestamp,
@@ -273,20 +245,7 @@ export async function ingestDeviceReading(
     if (
       timeDifference > 60_000
     ) {
-      console.error(
-        "[NEXUS:IOT] Unauthorized: timestamp outside ±60s window",
-        {
-          difference_ms:
-            now -
-            authentication.timestamp,
-          difference_seconds:
-            (
-              (now -
-                authentication.timestamp) /
-              1000
-            ),
-        },
-      );
+      console.error("[NEXUS:IOT] Unauthorized: timestamp outside ±60s window");
 
       return {
         ok: false,
@@ -303,7 +262,6 @@ export async function ingestDeviceReading(
     ) {
       console.error(
         "[NEXUS:IOT] Unauthorized: invalid nonce",
-        authentication.nonce,
       );
 
       return {
@@ -490,19 +448,6 @@ export async function ingestDeviceReading(
      * Aqui está o log que queríamos.
      */
 
-    const signingMessage =
-      mqttSigningMessage(
-        deviceId,
-        authentication.timestamp,
-        authentication.nonce,
-        payload,
-      );
-
-    console.log(
-      "[NEXUS:IOT] Signing message:",
-      signingMessage,
-    );
-
     const expectedSignature =
       signMqttMessage(
         credential.token_hash,
@@ -515,21 +460,6 @@ export async function ingestDeviceReading(
         payload.light,
         payload.door_open,
       );
-
-    console.log(
-      "[NEXUS:IOT] HMAC debug:",
-      {
-        received_signature:
-          authentication.signature,
-        expected_signature:
-          expectedSignature,
-        match:
-          safeHexEqual(
-            expectedSignature,
-            authentication.signature,
-          ),
-      },
-    );
 
     if (
       !safeHexEqual(
@@ -553,108 +483,35 @@ export async function ingestDeviceReading(
   }
 
   /*
-   * 8. Persistir leituras
+   * 8. Persistir em uma única transação na função já existente.
+   * Os nomes dos argumentos correspondem à assinatura da migration
+   * device_auth_and_atomic_ingestion.sql; service_role é exigido pela função.
    */
-
-  const readings = [
+  const { error: ingestionError } = await supabase.rpc(
+    "ingest_device_readings",
     {
-      device_id: device.id,
-      sensor_type:
-        "temperature",
-      value_numeric:
-        payload.temperature,
-      value_boolean: null,
-      unit: "°C",
+      p_device_uuid: device.id,
+      p_temperature: payload.temperature,
+      p_humidity: payload.humidity,
+      p_presence: payload.presence,
+      p_light: payload.light,
+      p_door_open: payload.door_open,
     },
-
-    {
-      device_id: device.id,
-      sensor_type:
-        "humidity",
-      value_numeric:
-        payload.humidity,
-      value_boolean: null,
-      unit: "%",
-    },
-
-    {
-      device_id: device.id,
-      sensor_type:
-        "presence",
-      value_numeric: null,
-      value_boolean:
-        payload.presence,
-      unit: null,
-    },
-
-    {
-      device_id: device.id,
-      sensor_type:
-        "light",
-      value_numeric:
-        payload.light,
-      value_boolean: null,
-      unit: null,
-    },
-
-    {
-      device_id: device.id,
-      sensor_type:
-        "door",
-      value_numeric: null,
-      value_boolean:
-        payload.door_open,
-      unit: null,
-    },
-  ];
-
-  const {
-    error: readingsError,
-  } = await supabase
-    .from("sensor_readings")
-    .insert(readings);
-
-  if (readingsError) {
-    console.error(
-      "[NEXUS:IOT] sensor_readings insert failed:",
-      readingsError,
-    );
-
-    return {
-      ok: false,
-      reason: "persistence_failed",
-    };
-  }
-
-  /*
-   * 9. Atualizar last_seen
-   */
-
-  const {
-    error: lastSeenError,
-  } = await supabase
-    .from("devices")
-    .update({
-      last_seen_at:
-        new Date().toISOString(),
-    })
-    .eq("id", device.id);
-
-  if (lastSeenError) {
-    console.error(
-      "[NEXUS:IOT] last_seen_at update failed:",
-      lastSeenError,
-    );
-
-    return {
-      ok: false,
-      reason: "persistence_failed",
-    };
-  }
-
-  console.log(
-    "[NEXUS:IOT] Reading authenticated and persisted",
   );
+
+  if (ingestionError) {
+    console.error(
+      "[NEXUS:IOT] Atomic reading ingestion failed:",
+      ingestionError.message,
+    );
+
+    return {
+      ok: false,
+      reason: "persistence_failed",
+    };
+  }
+
+  console.log("[NEXUS:IOT] Reading authenticated and persisted");
 
   return {
     ok: true,

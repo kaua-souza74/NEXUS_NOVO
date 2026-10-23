@@ -8,15 +8,20 @@
     "start": "next start",
     "lint": "eslint",
     "mqtt:consumer": "tsx scripts/mqtt-consumer.ts",
-    "mqtt:test-publish": "tsx scripts/mqtt-test-publish.ts"
+    "mqtt:test-publish": "tsx scripts/mqtt-test-publish.ts",
+    "arduino:bridge": "tsx scripts/arduino-serial-bridge.ts",
+    "arduino:bridge:dry-run": "tsx scripts/arduino-serial-bridge.ts --dry-run",
+    "test:iot": "tsx --test scripts/arduino-serial-bridge.test.ts"
   },
   "dependencies": {
+    "@serialport/parser-readline": "13.0.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.0",
     "mqtt": "5.16.0",
     "next": "16.3.6",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "serialport": "13.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",
@@ -24,9 +29,7 @@
     "@types/react-dom": "^19.3.0",
     "eslint": "^9.39.0",
     "eslint-config-next": "16.3.6",
-    "mqtt": "5.16.0",
     "tsx": "4.23.15",
-    "typescript": "^5.9.3",
-    "tsx": "4.23.15"
+    "typescript": "^5.9.3"
   }
 }
