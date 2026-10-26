@@ -108,6 +108,7 @@ class NexusShell extends StatefulWidget {
 
 class _NexusShellState extends State<NexusShell> {
   int index = 0;
+  int _previousIndex = 0;
   @override
   void initState() {
     super.initState();
@@ -119,7 +120,7 @@ class _NexusShellState extends State<NexusShell> {
   static const labels = [
     'Início',
     'Espaços',
-    'Dispositivos',
+    'Sensores',
     'Alertas',
     'Perfil',
   ];
@@ -130,7 +131,13 @@ class _NexusShellState extends State<NexusShell> {
     Icons.notifications_outlined,
     Icons.person_outline_rounded,
   ];
-  void select(int value) => setState(() => index = value);
+  void select(int value) {
+    if (value == index) return;
+    setState(() {
+      _previousIndex = index;
+      index = value;
+    });
+  }
   Widget destination(int i, NexusStore store) => Expanded(
     child: Tooltip(
       message: labels[i],
@@ -142,30 +149,92 @@ class _NexusShellState extends State<NexusShell> {
           borderRadius: BorderRadius.circular(40),
           onTap: () => select(i),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 230),
-            height: 53,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: index == i ? N.wine : Colors.transparent,
-            ),
+            duration: Duration(milliseconds: store.reduceMotion ? 0 : 320),
+            curve: Curves.easeOutBack,
+            height: 58,
+            decoration: const BoxDecoration(color: Colors.transparent),
             child: Stack(
               alignment: Alignment.center,
               children: [
-                Icon(
-                  icons[i],
-                  color: index == i ? Colors.white : N.muted,
-                  size: 23,
+                AnimatedContainer(
+                  duration: Duration(
+                    milliseconds: store.reduceMotion ? 0 : 320,
+                  ),
+                  curve: Curves.easeOutBack,
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: index == i ? N.wine : Colors.transparent,
+                  ),
+                ),
+                AnimatedSwitcher(
+                  duration: Duration(
+                    milliseconds: store.reduceMotion ? 0 : 260,
+                  ),
+                  transitionBuilder: (child, animation) => ScaleTransition(
+                    scale: animation,
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: index == i
+                      ? Column(
+                          key: const ValueKey('selected'),
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icons[i], color: Colors.white, size: 21),
+                            const SizedBox(height: 2),
+                            SizedBox(
+                              width: 48,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  labels[i],
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w600,
+                                    height: 1,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : Icon(
+                          icons[i],
+                          key: const ValueKey('unselected'),
+                          color: N.muted,
+                          size: 23,
+                        ),
                 ),
                 if (i == 3 && store.activeAlerts > 0)
                   Positioned(
-                    top: 7,
-                    right: 10,
+                    top: 1,
+                    right: 3,
                     child: Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        color: N.peach,
+                      constraints: const BoxConstraints(
+                        minWidth: 19,
+                        minHeight: 19,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: N.red,
                         shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                      child: Center(
+                        child: Text(
+                          store.activeAlerts > 9
+                              ? '9+'
+                              : '${store.activeAlerts}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            height: 1,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -188,8 +257,29 @@ class _NexusShellState extends State<NexusShell> {
     ];
     final wide = MediaQuery.sizeOf(context).width >= 1000;
     final content = AnimatedSwitcher(
-      layoutBuilder: (current, previous) => current ?? const SizedBox.shrink(),
-      duration: Duration(milliseconds: store.reduceMotion ? 0 : 260),
+      duration: Duration(milliseconds: store.reduceMotion ? 0 : 420),
+      reverseDuration: Duration(milliseconds: store.reduceMotion ? 0 : 320),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final key = child.key;
+        final childIndex = key is ValueKey<int> ? key.value : index;
+        final entering = childIndex == index;
+        final movingForward = index > _previousIndex;
+        final startX = entering
+            ? (movingForward ? .16 : -.16)
+            : (movingForward ? -.10 : .10);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: Offset(startX, 0),
+              end: Offset.zero,
+            ).animate(animation),
+            child: child,
+          ),
+        );
+      },
       child: KeyedSubtree(key: ValueKey(index), child: pages[index]),
     );
     final nav = Container(

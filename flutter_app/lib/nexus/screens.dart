@@ -19,156 +19,216 @@ class HomePage extends StatelessWidget {
     final s = NexusScope.of(context);
     return PageScroll(
       key: const PageStorageKey('home'),
-      horizontalPadding: 10,
+      horizontalPadding: 8,
       children: [
         Row(
           children: [
-            const Brand(),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.asset(
+                'assets/brand/nexus_logo.png',
+                width: 44,
+                height: 44,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'NEXUS',
+                  style: TextStyle(
+                    color: N.wine,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 2.6,
+                    height: 1.1,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'GESTÃO HOTELEIRA',
+                  style: TextStyle(
+                    color: N.muted,
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ],
+            ),
             const Spacer(),
-            IconButton(
-              tooltip: 'Ver alertas',
-              onPressed: () => onTab(3),
-              icon: Badge(
-                label: Text('${s.activeAlerts}'),
-                isLabelVisible: s.activeAlerts > 0,
-                child: const Icon(Icons.notifications_outlined),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .92),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: N.line.withValues(alpha: .8)),
+                boxShadow: [
+                  BoxShadow(
+                    color: N.wine.withValues(alpha: .06),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: SizedBox(
+                width: 50,
+                height: 50,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    IconButton(
+                      tooltip: 'Ver alertas',
+                      onPressed: () => onTab(3),
+                      icon: const Icon(Icons.notifications_none_rounded),
+                    ),
+                    if (s.activeAlerts > 0)
+                      Positioned(
+                        top: 5,
+                        right: 5,
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          decoration: const BoxDecoration(
+                            color: N.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${s.activeAlerts}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 14),
         DataGate(
           child: bodyColumn([
             Enter(
               child: Surface(
                 dark: true,
                 backgroundImage: 'assets/images/lobby-evening.png',
-                padding: const EdgeInsets.all(26),
-                child: bodyColumn([
-                  Row(
-                    children: [
-                      Pill(
-                        s.state == ViewState.offline
-                            ? 'ÚLTIMA LEITURA'
-                            : s.paused
-                            ? 'PAUSADO'
-                            : s.databaseSyncedAt != null
-                            ? 'DADOS ATUALIZADOS'
-                            : 'ACOMPANHAMENTO',
-                        dark: true,
-                      ),
-                      const Spacer(),
-                      Text(
-                        timeLabel(s.databaseSyncedAt ?? s.updatedAt),
-                        style: const TextStyle(
-                          color: Colors.white60,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 25),
-                  Text(
-                    s.hotelName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 25,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: -.7,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
-                  AnimatedNumber(
-                    s.databaseSpaceCount.toDouble(),
-                    style: const TextStyle(
-                      fontSize: 82,
-                      height: 1.05,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w400,
-                      letterSpacing: -5,
-                    ),
-                  ),
-                  const Text(
-                    'espaços monitorados',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  const SizedBox(height: 22),
-                  Pill(
-                    s.databaseError != null
-                        ? 'Não foi possível atualizar'
-                        : s.databaseSyncedAt != null
-                        ? 'Leituras atualizadas'
-                        : 'Aguardando sincronização',
-                    dark: true,
-                    icon: s.databaseError != null
-                        ? Icons.error_outline
-                        : Icons.check_circle_outline,
-                  ),
-                  const SizedBox(height: 25),
-                  GlassPanel(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 15,
-                      horizontal: 14,
-                    ),
-                    child: Row(
+                padding: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: bodyColumn([
+                    Row(
                       children: [
-                        Expanded(
-                          child: _HeroStat(
-                            '${s.databaseOnlineDeviceCount}',
-                            'Sensores online',
-                            N.peach,
-                          ),
+                        Pill(
+                          s.state == ViewState.offline
+                              ? 'ÚLTIMA LEITURA'
+                              : s.paused
+                              ? 'PAUSADO'
+                              : s.databaseSyncedAt != null
+                              ? 'DADOS ATUALIZADOS'
+                              : 'ACOMPANHAMENTO',
+                          dark: true,
                         ),
-                        Expanded(
-                          child: _HeroStat(
-                            '${s.databaseDeviceCount - s.databaseOnlineDeviceCount}',
-                            'Sem sinal',
-                            Colors.white60,
-                          ),
-                        ),
-                        Expanded(
-                          child: _HeroStat(
-                            '${s.databaseReadings.length}',
-                            'Leituras recentes',
-                            const Color(0xFFF4B7A8),
+                        const Spacer(),
+                        Text(
+                          timeLabel(s.databaseSyncedAt ?? s.updatedAt),
+                          style: const TextStyle(
+                            color: Colors.white60,
+                            fontSize: 12,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ]),
+                    const SizedBox(height: 25),
+                    Text(
+                      s.hotelName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 25,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: -.7,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    AnimatedNumber(
+                      s.databaseSpaceCount.toDouble(),
+                      style: const TextStyle(
+                        fontSize: 82,
+                        height: 1.05,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w400,
+                        letterSpacing: -5,
+                      ),
+                    ),
+                    const Text(
+                      'espaços monitorados',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 22),
+                    Pill(
+                      s.databaseError != null
+                          ? 'Não foi possível atualizar'
+                          : s.databaseSyncedAt != null
+                          ? 'Leituras atualizadas'
+                          : 'Aguardando sincronização',
+                      dark: true,
+                      icon: s.databaseError != null
+                          ? Icons.error_outline
+                          : Icons.check_circle_outline,
+                    ),
+                    const SizedBox(height: 25),
+                    GlassPanel(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 15,
+                        horizontal: 14,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _HeroStat(
+                              '${s.databaseOnlineDeviceCount}',
+                              'Sensores online',
+                              N.peach,
+                            ),
+                          ),
+                          Expanded(
+                            child: _HeroStat(
+                              '${s.databaseDeviceCount - s.databaseOnlineDeviceCount}',
+                              'Sem sinal',
+                              Colors.white60,
+                            ),
+                          ),
+                          Expanded(
+                            child: _HeroStat(
+                              '${s.databaseReadings.length}',
+                              'Leituras recentes',
+                              const Color(0xFFF4B7A8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ]),
+                ),
               ),
             ),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final simulation = _HomeAction(
-                  title: 'Simulação',
-                  description: 'Cenários de teste e leituras simuladas',
-                  icon: Icons.tune_rounded,
-                  onTap: () => showSimulation(context),
-                );
-                final viewer = _HomeAction(
-                  title: 'Visualizador do hotel',
-                  description: 'Planta e leituras dos sensores',
-                  icon: Icons.apartment_rounded,
-                  primary: true,
-                  onTap: () => openPage(context, const HotelViewerPage()),
-                );
-                if (!s.showHotelViewer) return simulation;
-                if (constraints.maxWidth < 560) {
-                  return Column(
-                    children: [simulation, const SizedBox(height: 10), viewer],
-                  );
-                }
-                return Row(
-                  children: [
-                    Expanded(child: simulation),
-                    const SizedBox(width: 12),
-                    Expanded(child: viewer),
-                  ],
-                );
-              },
-            ),
+            const SizedBox(height: 20),
+            if (s.showHotelViewer)
+              _HomeAction(
+                title: 'Visualizador do hotel',
+                description: 'Planta e leituras dos sensores',
+                icon: Icons.apartment_rounded,
+                primary: true,
+                onTap: () => openPage(context, const HotelViewerPage()),
+              ),
             const Section('Acesso rápido'),
             Row(
               children: [
@@ -765,66 +825,32 @@ class _AlertsPageState extends State<AlertsPage> {
             color: Colors.white,
             size: 24,
           ),
-        ),
-        gap,
-        Row(
-          children: [
-            Expanded(
-              child: Surface(
-                padding: const EdgeInsets.all(15),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.error_outline_rounded,
-                      color: N.red,
-                      size: 19,
-                    ),
-                    const SizedBox(height: 11),
-                    Text(
-                      '${s.activeAlerts}',
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Text(
-                      'Ativos agora',
-                      style: TextStyle(fontSize: 10, color: N.muted),
-                    ),
-                  ],
+          footer: GlassPanel(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _DeviceStat(
+                    '${s.activeAlerts}',
+                    'Ativos agora',
+                    const Color(0xFFF4B7A8),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(width: 11),
-            Expanded(
-              child: Surface(
-                padding: const EdgeInsets.all(15),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(
-                      Icons.check_circle_outline_rounded,
-                      color: N.green,
-                      size: 19,
-                    ),
-                    const SizedBox(height: 11),
-                    Text(
-                      '${s.alerts.length - s.activeAlerts}',
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const Text(
-                      'Resolvidos',
-                      style: TextStyle(fontSize: 10, color: N.muted),
-                    ),
-                  ],
+                Container(
+                  width: 1,
+                  height: 34,
+                  color: Colors.white.withValues(alpha: .22),
                 ),
-              ),
+                Expanded(
+                  child: _DeviceStat(
+                    '${s.alerts.length - s.activeAlerts}',
+                    'Resolvidos',
+                    Colors.white,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
         gap,
         FilterPills(
@@ -1771,7 +1797,30 @@ class ProfilePage extends StatelessWidget {
     final s = NexusScope.of(context);
     return PageScroll(
       children: [
-        const Heading('Perfil', subtitle: 'Seu hotel, do seu jeito.'),
+        Heading(
+          'Perfil',
+          subtitle: 'Seu hotel, do seu jeito.',
+          trailing: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: N.wine,
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: [
+                BoxShadow(
+                  color: N.wine.withValues(alpha: .16),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.person_outline_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+        ),
         _ProfileHero(userName: s.userName, hotelName: s.hotelName),
         const Section('Preferências'),
         Surface(
@@ -1821,36 +1870,101 @@ class ProfilePage extends StatelessWidget {
         ),
         gap,
         const Surface(
-          child: Column(
-            children: [
-              Brand(),
-              SizedBox(height: 18),
-              Text(
-                'Monitoramento de ambientes e sensores.',
-                style: TextStyle(color: N.muted, fontSize: 13),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Versão 1.0 · Projeto SENAI',
-                style: TextStyle(color: N.muted, fontSize: 11),
-              ),
-            ],
+          padding: EdgeInsets.zero,
+          child: Padding(
+            padding: EdgeInsets.all(18),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Brand(),
+                    Spacer(),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'NEXUS 1.0',
+                          style: TextStyle(
+                            color: N.wine,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: .8,
+                          ),
+                        ),
+                        SizedBox(height: 3),
+                        Text(
+                          'Projeto SENAI',
+                          style: TextStyle(color: N.muted, fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                SizedBox(height: 14),
+                Row(
+                  children: [
+                    Icon(Icons.sensors_outlined, color: N.rose, size: 18),
+                    SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        'Monitoramento de ambientes e sensores.',
+                        style: TextStyle(color: N.muted, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-        gap,
         if (onLogout != null) ...[
           gap,
           Surface(
+            padding: EdgeInsets.zero,
             onTap: onLogout,
-            child: const Row(
-              children: [
-                Icon(Icons.logout_rounded, color: N.wine),
-                SizedBox(width: 13),
-                Text(
-                  'Sair da conta',
-                  style: TextStyle(color: N.wine, fontWeight: FontWeight.w600),
+            child: const SizedBox(
+              height: 72,
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 18),
+                child: Row(
+                  children: [
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: N.canvas,
+                        borderRadius: BorderRadius.all(Radius.circular(14)),
+                      ),
+                      child: SizedBox(
+                        width: 42,
+                        height: 42,
+                        child: Icon(Icons.logout_rounded, color: N.wine),
+                      ),
+                    ),
+                    SizedBox(width: 13),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Sair da conta',
+                            style: TextStyle(
+                              color: N.wine,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Encerrar esta sessão',
+                            style: TextStyle(color: N.muted, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right_rounded, color: N.muted),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
