@@ -5,22 +5,17 @@ import { SerialPort } from "serialport";
 import { ReadlineParser } from "@serialport/parser-readline";
 import { Transform, type TransformCallback } from "node:stream";
 
+import { parseBridgeOptions } from "./arduino-serial-bridge-options";
 import {
   createSignedMqttEnvelope,
   EXPECTED_TOPIC,
   MAX_SERIAL_LINE_BYTES,
+  ONCE_PUBLICATION_TOPIC,
   parseArduinoTelemetryLine,
 } from "./arduino-serial-protocol";
 
 const SERIAL_BAUD_RATE = 115200;
-const DEFAULT_SERIAL_PORT = "COM11";
 const DEFAULT_BROKER_URL = "mqtt://broker.emqx.io:1883";
-
-type Options = {
-  dryRun: boolean;
-  port: string;
-  help: boolean;
-};
 
 class BoundedLineGuard extends Transform {
   private pending: Buffer[] = [];
@@ -81,44 +76,16 @@ class BoundedLineGuard extends Transform {
   }
 }
 
-function parseOptions(args: string[]): Options {
-  let dryRun = false;
-  let port = process.env.NEXUS_SERIAL_PORT ?? DEFAULT_SERIAL_PORT;
-  let help = false;
-
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === "--dry-run") {
-      dryRun = true;
-    } else if (arg === "--port") {
-      const next = args[index + 1];
-      if (!next || next.startsWith("--")) {
-        throw new Error("informe uma porta após --port, por exemplo COM11");
-      }
-      port = next;
-      index += 1;
-    } else if (arg === "--help" || arg === "-h") {
-      help = true;
-    } else {
-      throw new Error(`opção desconhecida: ${arg}`);
-    }
-  }
-
-  if (!port || port.length > 128 || /[\r\n\0]/.test(port)) {
-    throw new Error("porta serial inválida");
-  }
-
-  return { dryRun, port, help };
-}
-
 function printHelp(): void {
   console.info("Uso: npm run arduino:bridge:dry-run -- --port COM11");
-  console.info("Para execução autorizada: npm run arduino:bridge -- --port COM11");
+  console.info("Publicação única (QoS 1): npm run arduino:bridge -- --port COM12 --once");
+  console.info("Fluxo contínuo: npm run arduino:bridge -- --port COM11");
+  console.info("Adicione --dry-run --once para validar só a primeira linha sem MQTT.");
   console.info("Feche o Monitor Serial do Arduino IDE antes de iniciar.");
 }
 
 function main(): Promise<void> {
-  const options = parseOptions(process.argv.slice(2));
+  const options = parseBridgeOptions(process.argv.slice(2));
   if (options.help) {
     printHelp();
     return Promise.resolve();
@@ -134,8 +101,10 @@ function main(): Promise<void> {
     throw new Error("MQTT_BROKER_URL deve usar mqtt:// ou mqtts://");
   }
 
-  const topic = process.env.MQTT_TOPIC ?? EXPECTED_TOPIC;
-  if (topic !== EXPECTED_TOPIC) {
+  const topic = options.once
+    ? ONCE_PUBLICATION_TOPIC
+    : process.env.MQTT_TOPIC ?? EXPECTED_TOPIC;
+  if (!options.once && topic !== EXPECTED_TOPIC) {
     throw new Error("MQTT_TOPIC não corresponde ao dispositivo ESP32-001 cadastrado");
   }
 
@@ -149,6 +118,8 @@ function main(): Promise<void> {
   let client: MqttClient | undefined;
   let stopping = false;
   let connected = false;
+  let onceClaimed = false;
+  let oncePublishStarted = false;
 
   lineGuard.on("lineTooLong", () => {
     console.warn("[NEXUS:BRIDGE] Linha serial descartada: excedeu 4096 bytes");
@@ -157,28 +128,81 @@ function main(): Promise<void> {
   serial.pipe(lineGuard).pipe(parser);
 
   return new Promise<void>((resolve, reject) => {
-    const closeSerial = () => {
-      if (serial.isOpen) {
-        serial.close(() => resolve());
-      } else {
-        resolve();
-      }
+    const closeSerial = (done: () => void) => {
+      if (serial.isOpen) serial.close(() => done());
+      else done();
     };
 
-    const shutdown = () => {
+    const shutdown = (errorMessage?: string) => {
       if (stopping) return;
       stopping = true;
+      if (errorMessage) {
+        console.error(`[NEXUS:BRIDGE] ${errorMessage}`);
+        process.exitCode = 1;
+      }
       if (client) {
-        client.end(false, {}, closeSerial);
+        client.end(Boolean(errorMessage), {}, () => closeSerial(resolve));
       } else {
-        closeSerial();
+        closeSerial(resolve);
       }
     };
 
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
+    process.once("SIGINT", () => shutdown());
+    process.once("SIGTERM", () => shutdown());
+
+    const publishOnce = (envelope: ReturnType<typeof createSignedMqttEnvelope>) => {
+      if (oncePublishStarted || stopping) return;
+      oncePublishStarted = true;
+
+      try {
+        client = mqtt.connect(brokerUrl, {
+          clientId: `nexus-arduino-once-${process.pid}`,
+          clean: true,
+          connectTimeout: 15_000,
+          keepalive: 30,
+          reconnectPeriod: 0,
+          protocolVersion: 4,
+        });
+      } catch {
+        shutdown("não foi possível iniciar a conexão MQTT; nenhuma repetição será feita");
+        return;
+      }
+
+      client.once("connect", () => {
+        connected = true;
+        console.info("[NEXUS:BRIDGE] Conectada ao broker; enviando publicação única QoS 1");
+        client!.publish(
+          topic,
+          JSON.stringify(envelope),
+          { qos: 1, retain: false },
+          (error) => {
+            if (error) {
+              shutdown("callback MQTT confirmou falha; publicação não será repetida");
+              return;
+            }
+            console.info("[NEXUS:BRIDGE] Callback MQTT QoS 1 confirmado");
+            shutdown();
+          },
+        );
+      });
+
+      client.on("close", () => {
+        connected = false;
+        if (!stopping) {
+          shutdown("conexão MQTT encerrou antes da confirmação; publicação não será repetida");
+        }
+      });
+      client.on("error", () => {
+        connected = false;
+        if (!stopping) {
+          shutdown("falha MQTT antes da confirmação; publicação não será repetida");
+        }
+      });
+    };
 
     parser.on("data", (line: string) => {
+      if (stopping || (options.once && onceClaimed)) return;
+
       let payload;
       try {
         payload = parseArduinoTelemetryLine(line);
@@ -188,12 +212,13 @@ function main(): Promise<void> {
         return;
       }
 
+      if (options.once) onceClaimed = true;
+
       let envelope;
       try {
         envelope = createSignedMqttEnvelope(payload, token);
       } catch {
-        console.error("[NEXUS:BRIDGE] Não foi possível preparar a autenticação MQTT");
-        shutdown();
+        shutdown("não foi possível preparar a autenticação MQTT");
         return;
       }
 
@@ -203,6 +228,12 @@ function main(): Promise<void> {
             `umidade ${payload.humidity}%, presença ${payload.presence ? "sim" : "não"}, ` +
             `luminosidade raw ${payload.light}; MQTT desativado.`,
         );
+        if (options.once) shutdown();
+        return;
+      }
+
+      if (options.once) {
+        publishOnce(envelope);
         return;
       }
 
@@ -216,13 +247,14 @@ function main(): Promise<void> {
           console.error("[NEXUS:BRIDGE] Falha ao publicar leitura MQTT");
           return;
         }
-        console.info("[NEXUS:BRIDGE] Leitura publicada para o NEXUS");
+        console.info(
+          "[NEXUS:BRIDGE] Leitura enviada ao broker MQTT (QoS 0; persistência não confirmada)",
+        );
       });
     });
 
     parser.on("error", () => {
-      console.error("[NEXUS:BRIDGE] Erro ao processar a linha serial");
-      shutdown();
+      shutdown("erro ao processar a linha serial");
     });
 
     serial.on("error", (error) => {
@@ -230,7 +262,7 @@ function main(): Promise<void> {
       if (!serial.isOpen) {
         reject(error);
       } else {
-        shutdown();
+        shutdown("erro na porta serial; encerrando a bridge");
       }
     });
 
@@ -244,7 +276,7 @@ function main(): Promise<void> {
         `[NEXUS:BRIDGE] Serial aberta em ${options.port} a ${SERIAL_BAUD_RATE} baud${options.dryRun ? " (dry-run)" : ""}`,
       );
 
-      if (!options.dryRun) {
+      if (!options.dryRun && !options.once) {
         client = mqtt.connect(brokerUrl, {
           clientId: `nexus-arduino-${process.pid}`,
           clean: true,

@@ -5,8 +5,12 @@ import test from "node:test";
 import {
   createSignedMqttEnvelope,
   DEVICE_ID,
+  EXPECTED_TOPIC,
+  isAllowedDeviceTopic,
+  ONCE_PUBLICATION_TOPIC,
   parseArduinoTelemetryLine,
 } from "./arduino-serial-protocol";
+import { parseBridgeOptions } from "./arduino-serial-bridge-options";
 import { mqttSigningMessage, signMqttMessage } from "../src/lib/iot/mqtt-auth";
 
 const validLine =
@@ -46,6 +50,37 @@ test("rejects values outside the board and database contract", () => {
   );
   assert.throws(() =>
     parseArduinoTelemetryLine(validLine.replace('"door_open":false', '"door_open":true')),
+  );
+});
+
+test("parses the single-publication COM12 command without enabling dry-run", () => {
+  assert.deepEqual(parseBridgeOptions(["--port", "COM12", "--once"]), {
+    dryRun: false,
+    once: true,
+    port: "COM12",
+    help: false,
+  });
+  assert.deepEqual(parseBridgeOptions(["--port", "COM12", "--once", "--dry-run"]), {
+    dryRun: true,
+    once: true,
+    port: "COM12",
+    help: false,
+  });
+});
+
+test("allows the requested one-shot topic while preserving the existing device topic", () => {
+  assert.equal(isAllowedDeviceTopic(DEVICE_ID, ONCE_PUBLICATION_TOPIC), true);
+  assert.equal(isAllowedDeviceTopic(DEVICE_ID, EXPECTED_TOPIC), true);
+  assert.equal(
+    isAllowedDeviceTopic(DEVICE_ID, "nexus/vista-real/outro/ESP32-001/readings"),
+    false,
+  );
+  assert.equal(
+    isAllowedDeviceTopic(
+      "ESP32-00",
+      "nexus/vista-real/sala-de-testes/ESP32-00/readings",
+    ),
+    false,
   );
 });
 

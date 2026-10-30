@@ -5,6 +5,55 @@ class NexusRepository {
 
   final SupabaseClient client;
 
+  RealtimeChannel subscribeToDeviceEvents({
+    required String databaseDeviceId,
+    required void Function(PostgresChangePayload payload) onChange,
+    required void Function(bool ready) onRealtimeReady,
+  }) {
+    return client
+        .channel(
+          'nexus-device-$databaseDeviceId',
+          opts: const RealtimeChannelConfig(replicationReady: true),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'sensor_readings',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'device_id',
+            value: databaseDeviceId,
+          ),
+          callback: onChange,
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'devices',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: databaseDeviceId,
+          ),
+          callback: onChange,
+        )
+        .onSystemEvents((payload) {
+          if (payload is Map) {
+            if (payload['status'] == 'ok') onRealtimeReady(true);
+            if (payload['status'] == 'error') onRealtimeReady(false);
+          }
+        })
+        .subscribe((status, _) {
+          if (status != RealtimeSubscribeStatus.subscribed) {
+            onRealtimeReady(false);
+          }
+        });
+  }
+
+  Future<void> unsubscribe(RealtimeChannel channel) async {
+    await client.removeChannel(channel);
+  }
+
   Future<Map<String, dynamic>?> loadMembership() async {
     final user = client.auth.currentUser;
     if (user == null) return null;
@@ -23,7 +72,11 @@ class NexusRepository {
     if (relatedHotel is Map) return Map<String, dynamic>.from(relatedHotel);
     final hotelId = membership?['hotel_id'];
     if (hotelId == null) return null;
-    return client.from('hotels').select('id, name').eq('id', hotelId).maybeSingle();
+    return client
+        .from('hotels')
+        .select('id, name')
+        .eq('id', hotelId)
+        .maybeSingle();
   }
 
   Future<List<Map<String, dynamic>>> loadSpaces() async {
@@ -50,13 +103,18 @@ class NexusRepository {
     return rows.map((row) => Map<String, dynamic>.from(row)).toList();
   }
 
-  Future<List<Map<String, dynamic>>> loadReadings({int limit = 100}) async {
+  Future<List<Map<String, dynamic>>> loadReadings({int limit = 1000}) async {
     final devices = await loadDevices();
-    final deviceIds = devices.map((row) => row['id']).whereType<String>().toList();
+    final deviceIds = devices
+        .map((row) => row['id'])
+        .whereType<String>()
+        .toList();
     if (deviceIds.isEmpty) return [];
     final rows = await client
         .from('sensor_readings')
-        .select('id, device_id, sensor_type, value_numeric, value_boolean, unit, recorded_at')
+        .select(
+          'id, device_id, sensor_type, value_numeric, value_boolean, unit, recorded_at',
+        )
         .inFilter('device_id', deviceIds)
         .order('recorded_at', ascending: false)
         .limit(limit);
@@ -66,7 +124,11 @@ class NexusRepository {
   Future<Map<String, dynamic>?> loadProfile() async {
     final user = client.auth.currentUser;
     if (user == null) return null;
-    return client.from('profiles').select('id, full_name').eq('id', user.id).maybeSingle();
+    return client
+        .from('profiles')
+        .select('id, full_name')
+        .eq('id', user.id)
+        .maybeSingle();
   }
 
   Future<Map<String, dynamic>> loadDashboard() async {
@@ -74,7 +136,7 @@ class NexusRepository {
       loadHotel(),
       loadSpaces(),
       loadDevices(),
-      loadReadings(limit: 100),
+      loadReadings(limit: 1000),
       loadMembership(),
       loadProfile(),
     ]);

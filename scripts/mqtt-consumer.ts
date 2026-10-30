@@ -2,13 +2,10 @@ import "./load-local-env";
 import { randomUUID } from "node:crypto";
 import mqtt from "mqtt";
 import { ingestDeviceReadings, isRecord } from "../src/lib/iot/ingest";
+import { isAllowedDeviceTopic } from "./arduino-serial-protocol";
 
 const BROKER_URL = process.env.MQTT_BROKER_URL ?? "mqtt://broker.emqx.io:1883";
 const TOPIC_FILTER = process.env.MQTT_SUBSCRIBE_TOPIC ?? "nexus/vista-real/+/+/readings";
-const DEVICE_TOPICS = new Map([
-  ["ESP32-001", "nexus/vista-real/piscina/ESP32-001/readings"],
-  ["ESP32-00", "nexus/vista-real/sala-de-testes/ESP32-00/readings"],
-]);
 const MAX_MESSAGE_BYTES = 4096;
 const MAX_NONCES = 10_000;
 const seenNonces = new Map<string, number>();
@@ -66,7 +63,7 @@ client.on("message", async (topic, message) => {
   }
   if (
     !isEnvelope(envelope) ||
-    DEVICE_TOPICS.get(envelope.device_id) !== topic
+    !isAllowedDeviceTopic(envelope.device_id, topic)
   ) {
     console.warn("[NEXUS:MQTT] Invalid envelope or device ID");
     return;

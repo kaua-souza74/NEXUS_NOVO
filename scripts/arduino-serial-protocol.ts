@@ -6,6 +6,14 @@ import { signMqttMessage } from "../src/lib/iot/mqtt-auth";
 export const DEVICE_ID = "ESP32-001";
 export const MAX_SERIAL_LINE_BYTES = 4096;
 export const EXPECTED_TOPIC = `nexus/vista-real/piscina/${DEVICE_ID}/readings`;
+export const ONCE_PUBLICATION_TOPIC = `nexus/vista-real/quarto-101/${DEVICE_ID}/readings`;
+const ACCEPTED_TOPICS_BY_DEVICE = new Map<string, ReadonlySet<string>>([
+  [DEVICE_ID, new Set([EXPECTED_TOPIC, ONCE_PUBLICATION_TOPIC])],
+]);
+
+export function isAllowedDeviceTopic(deviceId: string, topic: string): boolean {
+  return ACCEPTED_TOPICS_BY_DEVICE.get(deviceId)?.has(topic) ?? false;
+}
 
 const REQUIRED_FIELDS = [
   "door_open",

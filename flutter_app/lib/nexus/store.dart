@@ -1,13 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/nexus_repository.dart';
 
 enum ViewState { normal, loading, empty, offline, error }
 
 enum AlertLevel { critical, warning, info }
 
-enum DemoScenario { normal, offline, heat, door, presence, light }
+enum DemoScenario { normal, offline, heat, presence, light }
 
 class SpaceData {
   SpaceData({
@@ -18,7 +19,6 @@ class SpaceData {
     required this.humidity,
     required this.light,
     required this.presence,
-    this.doorOpen = false,
     this.online = true,
     this.deviceCount = 1,
     this.simulated = true,
@@ -27,7 +27,7 @@ class SpaceData {
   final String id, name, type;
   double temperature, humidity;
   int light;
-  bool presence, doorOpen, online;
+  bool presence, online;
   int deviceCount;
   bool simulated, physical;
   bool databaseBacked = false;
@@ -54,7 +54,7 @@ class DeviceData {
   final String id;
   String name, spaceId;
   bool online;
-  final bool physical;
+  bool physical;
   bool databaseBacked = false;
   bool? databaseOnline;
   String? databaseId;
@@ -80,9 +80,20 @@ class AlertData {
   bool resolved;
 }
 
+class _SimulationTrend {
+  _SimulationTrend(SpaceData space)
+    : temperatureDirection = space.temperature > 27 ? -1 : 1,
+      humidityDirection = space.humidity > 70 ? -1 : 1,
+      lightDirection = space.light > 1023 ? -1 : 1;
+
+  int temperatureDirection;
+  int humidityDirection;
+  int lightDirection;
+}
+
 /// Uma única fonte de dados para todas as telas. Sem sorteios durante render.
 class NexusStore extends ChangeNotifier {
-  static const _physicalSpaceId = 'test-bench';
+  static const _physicalDeviceId = 'ESP32-001';
 
   NexusStore({this.repository, bool autoStart = true}) {
     _seed();
@@ -95,10 +106,12 @@ class NexusStore extends ChangeNotifier {
       _timer = Timer.periodic(const Duration(seconds: 6), (_) {
         advance();
         final lastAttempt = databaseAttemptedAt;
+        final refreshInterval = databaseRealtimeConnected
+            ? const Duration(seconds: 60)
+            : const Duration(seconds: 15);
         if (repository?.client.auth.currentUser != null &&
             (lastAttempt == null ||
-                DateTime.now().difference(lastAttempt) >=
-                    const Duration(seconds: 30))) {
+                DateTime.now().difference(lastAttempt) >= refreshInterval)) {
           unawaited(refreshFromDatabase());
         }
       });
@@ -114,10 +127,19 @@ class NexusStore extends ChangeNotifier {
   final List<AlertData> alerts = [];
   final List<Map<String, dynamic>> databaseReadings = [];
   Timer? _timer, _loading;
+  Timer? _realtimeNotifyTimer;
+  final ValueNotifier<bool> reduceMotionListenable = ValueNotifier(false);
+  final Map<String, _SimulationTrend> _simulationTrends = {};
+  final List<DateTime> _simulatedReadingTimes = [];
+  RealtimeChannel? _deviceEventsChannel;
+  String? _realtimeDeviceDatabaseId;
+  bool _disposed = false;
   bool _refreshingDatabase = false;
+  bool _refreshQueued = false;
   DateTime? databaseSyncedAt;
   DateTime? databaseAttemptedAt;
   String? databaseError;
+  bool databaseRealtimeConnected = false;
   String membershipRole = '';
   int tick = 0;
   bool paused = false, notifications = true, reduceMotion = false;
@@ -140,6 +162,16 @@ class NexusStore extends ChangeNotifier {
   int get databaseOnlineDeviceCount =>
       devices.where((d) => d.databaseBacked && d.databaseOnline == true).length;
   int get simulatedDeviceCount => devices.where((d) => !d.physical).length;
+  int get recentReadingCount {
+    final cutoff = DateTime.now().subtract(const Duration(minutes: 5));
+    final stored = databaseReadings.where((row) {
+      final time = DateTime.tryParse(row['recorded_at']?.toString() ?? '');
+      return time != null && time.isAfter(cutoff);
+    }).length;
+    return stored +
+        _simulatedReadingTimes.where((time) => time.isAfter(cutoff)).length;
+  }
+
   int get activeAlerts => alerts.where((a) => !a.resolved).length;
   int get occupiedSpaces => spaces.where((s) => s.presence && s.online).length;
   double get activity => occupiedSpaces / spaces.length * 100;
@@ -214,7 +246,13 @@ class NexusStore extends ChangeNotifier {
       membershipRole = membership?['role']?.toString() ?? '';
 
       final databaseSpaces =
-          snapshot['spaces'] as List<Map<String, dynamic>>? ?? [];
+          (snapshot['spaces'] as List<Map<String, dynamic>>? ?? []).where((
+            row,
+          ) {
+            final type = row['type']?.toString().toLowerCase();
+            final name = row['name']?.toString().trim().toLowerCase();
+            return type != 'test' && name != 'sala de testes';
+          }).toList();
       final byDatabaseSpaceId = <String, SpaceData>{};
       for (final row in databaseSpaces) {
         final id = row['id']?.toString();
@@ -246,7 +284,7 @@ class NexusStore extends ChangeNotifier {
         target
           ..databaseId = id
           ..databaseBacked = true
-          ..physical = target.id == _physicalSpaceId
+          ..physical = target.physical
           ..simulated = !target.physical;
         byDatabaseSpaceId[id] = target;
       }
@@ -259,7 +297,12 @@ class NexusStore extends ChangeNotifier {
         final id = row['device_id']?.toString();
         final roomId = row['space_id']?.toString();
         final room = roomId == null ? null : byDatabaseSpaceId[roomId];
-        if (databaseId == null || id == null || room == null) continue;
+        if (databaseId == null ||
+            id == null ||
+            id == 'ESP32-00' ||
+            room == null) {
+          continue;
+        }
         DeviceData? target;
         for (final candidate in devices) {
           if (candidate.id == id) {
@@ -282,6 +325,7 @@ class NexusStore extends ChangeNotifier {
         target
           ..databaseId = databaseId
           ..databaseBacked = true
+          ..physical = id == _physicalDeviceId
           ..name = row['name']?.toString() ?? id
           ..spaceId = room.id
           ..databaseOnline = databaseOnline;
@@ -289,7 +333,7 @@ class NexusStore extends ChangeNotifier {
           ..lastSeen = lastSeen ?? DateTime.fromMillisecondsSinceEpoch(0)
           ..online = databaseOnline;
         room
-          ..physical = room.id == _physicalSpaceId
+          ..physical = room.physical || target.physical
           ..simulated = !room.physical;
         byDatabaseDeviceId[databaseId] = target;
       }
@@ -298,10 +342,16 @@ class NexusStore extends ChangeNotifier {
           snapshot['readings'] as List<Map<String, dynamic>>? ?? [];
       databaseReadings
         ..clear()
-        ..addAll(readings);
+        ..addAll(
+          readings.where((row) => row['sensor_type']?.toString() != 'door'),
+        );
       for (final device in byDatabaseDeviceId.values) {
         device.messages = readings
-            .where((row) => row['device_id']?.toString() == device.databaseId)
+            .where(
+              (row) =>
+                  row['device_id']?.toString() == device.databaseId &&
+                  row['sensor_type']?.toString() != 'door',
+            )
             .length;
       }
       final latestBySpaceAndType = <String, Set<String>>{};
@@ -314,6 +364,7 @@ class NexusStore extends ChangeNotifier {
         final room = spaces.firstWhere((space) => space.id == device.spaceId);
         if (!room.databaseBacked) continue;
         final type = row['sensor_type']?.toString() ?? '';
+        if (type == 'door') continue;
         final value = row['value_numeric'];
         final boolean = row['value_boolean'];
         final seenTypes = latestBySpaceAndType.putIfAbsent(room.id, () => {});
@@ -334,9 +385,6 @@ class NexusStore extends ChangeNotifier {
             case 'presence':
               if (boolean is bool) room.presence = boolean;
               break;
-            case 'door':
-              if (boolean is bool) room.doorOpen = boolean;
-              break;
           }
           seenTypes.add(type);
         }
@@ -353,14 +401,28 @@ class NexusStore extends ChangeNotifier {
         }
       }
       for (final room in byDatabaseSpaceId.values) {
+        if (!devices.any((device) => device.spaceId == room.id)) {
+          devices.add(
+            DeviceData(
+              'SIM-ESP32-${(devices.length + 1).toString().padLeft(3, '0')}',
+              room.id,
+              online: true,
+            ),
+          );
+        }
         final roomDevices = devices
-            .where(
-              (device) => device.databaseBacked && device.spaceId == room.id,
-            )
+            .where((device) => device.spaceId == room.id)
             .toList();
+        final hasPhysicalDevice = roomDevices.any((device) => device.physical);
         room
           ..deviceCount = roomDevices.length
-          ..online = roomDevices.any((device) => device.databaseOnline == true);
+          ..physical = hasPhysicalDevice
+          ..simulated = !hasPhysicalDevice
+          ..online = hasPhysicalDevice
+              ? roomDevices.any(
+                  (device) => device.physical && device.databaseOnline == true,
+                )
+              : true;
         final latest = newestTimeBySpace[room.id];
         if (latest != null) room.lastReading = latest.toLocal();
         final history = temperatureHistory[room.id];
@@ -384,7 +446,11 @@ class NexusStore extends ChangeNotifier {
           final device = databaseDeviceId == null
               ? null
               : byDatabaseDeviceId[databaseDeviceId];
-          if (device == null || device.spaceId != room.id) continue;
+          if (device == null ||
+              device.spaceId != room.id ||
+              row['sensor_type']?.toString() == 'door') {
+            continue;
+          }
           final recordedAt = DateTime.tryParse(
             row['recorded_at']?.toString() ?? '',
           );
@@ -399,6 +465,18 @@ class NexusStore extends ChangeNotifier {
           );
         }
       }
+      for (final room in byDatabaseSpaceId.values.where(
+        (room) => room.physical,
+      )) {
+        _syncPhysicalTemperatureAlert(room);
+      }
+      final physicalDevice = devices
+          .where(
+            (device) =>
+                device.id == _physicalDeviceId && device.databaseId != null,
+          )
+          .firstOrNull;
+      _syncRealtimeSubscription(physicalDevice?.databaseId);
       databaseSyncedAt = DateTime.now();
       databaseError = null;
     } catch (error) {
@@ -406,7 +484,152 @@ class NexusStore extends ChangeNotifier {
     } finally {
       _refreshingDatabase = false;
       notifyListeners();
+      if (_refreshQueued && !_disposed) {
+        _refreshQueued = false;
+        unawaited(refreshFromDatabase());
+      }
     }
+  }
+
+  void _syncRealtimeSubscription(String? databaseDeviceId) {
+    final source = repository;
+    if (source == null || databaseDeviceId == null) return;
+    if (_realtimeDeviceDatabaseId == databaseDeviceId &&
+        _deviceEventsChannel != null) {
+      return;
+    }
+    final previous = _deviceEventsChannel;
+    _deviceEventsChannel = null;
+    _realtimeDeviceDatabaseId = databaseDeviceId;
+    if (previous != null) unawaited(source.unsubscribe(previous));
+    _deviceEventsChannel = source.subscribeToDeviceEvents(
+      databaseDeviceId: databaseDeviceId,
+      onChange: _applyRealtimeChange,
+      onRealtimeReady: (ready) {
+        if (_disposed) return;
+        databaseRealtimeConnected = ready;
+        if (ready) {
+          if (_refreshingDatabase) {
+            _refreshQueued = true;
+          } else {
+            unawaited(refreshFromDatabase());
+          }
+        }
+        notifyListeners();
+      },
+    );
+  }
+
+  void _applyRealtimeChange(PostgresChangePayload payload) {
+    if (_disposed) return;
+    final record = payload.newRecord;
+    if (payload.table == 'sensor_readings' &&
+        record['sensor_type']?.toString() == 'door') {
+      return;
+    }
+    final device = devices
+        .where(
+          (item) =>
+              item.databaseId == record['id'] ||
+              item.databaseId == record['device_id'],
+        )
+        .firstOrNull;
+    if (device == null) {
+      _refreshQueued = true;
+      if (!_refreshingDatabase) unawaited(refreshFromDatabase());
+      return;
+    }
+
+    if (payload.table == 'devices') {
+      final lastSeen = DateTime.tryParse(
+        record['last_seen_at']?.toString() ?? '',
+      );
+      final age = lastSeen == null
+          ? null
+          : DateTime.now().difference(lastSeen.toLocal());
+      final isOnline =
+          age != null &&
+          age >= Duration.zero &&
+          age <= const Duration(minutes: 2);
+      device
+        ..lastSeen = lastSeen ?? device.lastSeen
+        ..databaseOnline = isOnline
+        ..online = isOnline;
+      final room = spaces
+          .where((space) => space.id == device.spaceId)
+          .firstOrNull;
+      if (room != null) {
+        room.online = devices.any(
+          (item) =>
+              item.databaseBacked &&
+              item.spaceId == room.id &&
+              item.databaseOnline == true,
+        );
+      }
+    } else if (payload.table == 'sensor_readings') {
+      final reading = Map<String, dynamic>.from(record);
+      databaseReadings.insert(0, reading);
+      if (databaseReadings.length > 1000) databaseReadings.removeLast();
+      device.messages++;
+      final room = spaces
+          .where((space) => space.id == device.spaceId)
+          .firstOrNull;
+      final type = record['sensor_type']?.toString() ?? '';
+      final value = record['value_numeric'];
+      final boolean = record['value_boolean'];
+      final recordedAt = DateTime.tryParse(
+        record['recorded_at']?.toString() ?? '',
+      );
+      if (room != null) {
+        switch (type) {
+          case 'temperature':
+            final number = _number(value);
+            if (number != null) {
+              room.temperature = number;
+              room.history.add(number);
+              if (room.history.length > 100) room.history.removeAt(0);
+              if (device.physical) _syncPhysicalTemperatureAlert(room);
+            }
+            break;
+          case 'humidity':
+            final number = _number(value);
+            if (number != null) room.humidity = number;
+            break;
+          case 'light':
+            final number = _number(value);
+            if (number != null) room.light = number.round();
+            break;
+          case 'presence':
+            if (boolean is bool) room.presence = boolean;
+            break;
+        }
+        if (recordedAt != null) {
+          room.lastReading = recordedAt.toLocal();
+          final readingValue = boolean ?? value ?? '—';
+          room.events.insert(
+            0,
+            SpaceEvent(
+              '${_readingName(type)}: $readingValue',
+              type,
+              recordedAt.toLocal(),
+            ),
+          );
+          if (room.events.length > 100) room.events.removeLast();
+        }
+      }
+    }
+    databaseSyncedAt = DateTime.now();
+    databaseError = null;
+    updatedAt = DateTime.now();
+    _scheduleRealtimeNotification();
+  }
+
+  void _scheduleRealtimeNotification() {
+    if (_disposed || _realtimeNotifyTimer?.isActive == true) return;
+    _realtimeNotifyTimer = Timer(const Duration(milliseconds: 120), () {
+      _realtimeNotifyTimer = null;
+      if (!_disposed) notifyListeners();
+    });
   }
 
   static double? _number(dynamic value) {
@@ -419,12 +642,36 @@ class NexusStore extends ChangeNotifier {
     'humidity' => 'Umidade',
     'presence' => 'Presença',
     'light' => 'Luminosidade',
-    'door' => 'Porta',
     _ => 'Leitura',
   };
 
+  void _syncPhysicalTemperatureAlert(SpaceData room) {
+    const threshold = 28.0;
+    final alertId = 'high-temperature-${room.id}';
+    final existing = alerts.where((alert) => alert.id == alertId).firstOrNull;
+    if (room.temperature > threshold) {
+      final device = devices
+          .where((item) => item.physical && item.spaceId == room.id)
+          .firstOrNull;
+      if (device == null) return;
+      _alert(
+        alertId,
+        'Temperatura elevada',
+        room.id,
+        device.id,
+        'Temperatura atual: ${room.temperature.toStringAsFixed(1)} °C. Limite de alerta: acima de 28 °C.',
+        AlertLevel.critical,
+      );
+    } else if (existing != null && !existing.resolved) {
+      existing
+        ..resolved = true
+        ..description =
+            'Temperatura normalizada: ${room.temperature.toStringAsFixed(1)} °C.';
+    }
+  }
+
   static String _spaceType(String? value) => switch (value) {
-    'test' => 'Teste físico',
+    'test' => 'Área comum',
     'pool' => 'Lazer',
     'lobby' || 'reception' => 'Recepção',
     'restaurant' => 'Restaurante',
@@ -449,18 +696,6 @@ class NexusStore extends ChangeNotifier {
         presence: true,
       ),
       SpaceData(
-        id: 'test-bench',
-        name: 'Sala de Testes',
-        type: 'Teste físico',
-        temperature: 22.1,
-        humidity: 55,
-        light: 180,
-        presence: false,
-        online: false,
-        simulated: false,
-        physical: true,
-      ),
-      SpaceData(
         id: 'parking',
         name: 'Estacionamento',
         type: 'Estacionamento',
@@ -477,7 +712,6 @@ class NexusStore extends ChangeNotifier {
         humidity: 63,
         light: 650,
         presence: true,
-        online: false,
       ),
       SpaceData(
         id: 'restaurant',
@@ -496,6 +730,8 @@ class NexusStore extends ChangeNotifier {
         humidity: 66,
         light: 920,
         presence: true,
+        simulated: false,
+        physical: true,
       ),
       SpaceData(
         id: 'corridor',
@@ -574,9 +810,7 @@ class NexusStore extends ChangeNotifier {
     var simulatedDeviceNumber = 2;
     for (var i = 0; i < spaces.length; i++) {
       final s = spaces[i];
-      final deviceId = s.id == _physicalSpaceId
-          ? 'ESP32-00'
-          : s.id == 'pool'
+      final deviceId = s.id == 'pool'
           ? 'ESP32-001'
           : 'SIM-ESP32-${(simulatedDeviceNumber++).toString().padLeft(3, '0')}';
       devices.add(
@@ -584,8 +818,8 @@ class NexusStore extends ChangeNotifier {
           deviceId,
           s.id,
           online: s.online,
-          physical: s.physical,
-          name: s.physical ? 'ESP32-00 físico' : deviceId,
+          physical: deviceId == _physicalDeviceId,
+          name: deviceId == _physicalDeviceId ? '001' : deviceId,
         ),
       );
       s.lastReading = s.online
@@ -599,11 +833,6 @@ class NexusStore extends ChangeNotifier {
           'Presença ${s.presence ? 'detectada' : 'não detectada'}',
           'presence',
           now.subtract(const Duration(minutes: 2)),
-        ),
-        SpaceEvent(
-          'Porta fechada',
-          'door',
-          now.subtract(const Duration(minutes: 6)),
         ),
         SpaceEvent(
           'Temperatura: ${s.temperature.toStringAsFixed(1)} °C',
@@ -622,14 +851,6 @@ class NexusStore extends ChangeNotifier {
       devicesIn('conference').first.id,
       'A temperatura atingiu 28,7 °C. Faixa de conforto: 20–26 °C.',
       AlertLevel.critical,
-    );
-    _alert(
-      'offline-gym',
-      'Dispositivo offline',
-      'gym',
-      devicesIn('gym').first.id,
-      'Sem comunicação há 23 minutos. A última leitura foi preservada.',
-      AlertLevel.warning,
     );
     for (var i = 0; i < 8; i++) {
       alerts.add(
@@ -682,18 +903,40 @@ class NexusStore extends ChangeNotifier {
     updatedAt = DateTime.now();
     for (var i = 0; i < spaces.length; i++) {
       final s = spaces[i];
-      if (!s.online || s.physical || s.databaseBacked) continue;
-      s.temperature = (s.temperature + math.sin((tick + i) / 3) * 0.08)
-          .clamp(18, 32)
-          .toDouble();
-      s.humidity = (s.humidity + math.cos((tick + i) / 4) * 0.2)
-          .clamp(35, 75)
-          .toDouble();
-      s.light = (s.light + math.sin((tick + i) / 2) * 9).round().clamp(
-        60,
-        1200,
+      final hasLiveDatabaseDevice = devices.any(
+        (device) => device.spaceId == s.id && device.databaseBacked,
       );
+      if (!s.online || s.physical || hasLiveDatabaseDevice) continue;
+      final trend = _simulationTrends.putIfAbsent(
+        s.id,
+        () => _SimulationTrend(s),
+      );
+      s.temperature = _stepSimulation(
+        s.temperature,
+        min: 20,
+        max: 27,
+        step: .08,
+        direction: () => trend.temperatureDirection,
+        setDirection: (value) => trend.temperatureDirection = value,
+      );
+      s.humidity = _stepSimulation(
+        s.humidity,
+        min: 40,
+        max: 70,
+        step: .15,
+        direction: () => trend.humidityDirection,
+        setDirection: (value) => trend.humidityDirection = value,
+      );
+      s.light = _stepSimulation(
+        s.light.toDouble(),
+        min: 60,
+        max: 1023,
+        step: 5,
+        direction: () => trend.lightDirection,
+        setDirection: (value) => trend.lightDirection = value,
+      ).round();
       s.lastReading = updatedAt;
+      _simulatedReadingTimes.addAll([updatedAt, updatedAt, updatedAt]);
       s.history.add(s.temperature);
       if (s.history.length > 48) s.history.removeAt(0);
     }
@@ -713,13 +956,33 @@ class NexusStore extends ChangeNotifier {
         'presence',
       );
     }
-    if (tick % 12 == 0) {
-      _door();
-    }
-    if (tick % 20 == 0) {
-      _connection(!space('gym').online);
-    }
+    _simulatedReadingTimes.removeWhere(
+      (time) => updatedAt.difference(time) > const Duration(minutes: 5),
+    );
     notifyListeners();
+  }
+
+  double _stepSimulation(
+    double value, {
+    required double min,
+    required double max,
+    required double step,
+    required int Function() direction,
+    required void Function(int) setDirection,
+  }) {
+    var nextDirection = direction();
+    if (value >= max) nextDirection = -1;
+    if (value <= min) nextDirection = 1;
+    var next = value + step * nextDirection;
+    if (next > max) {
+      next = max - (next - max);
+      nextDirection = -1;
+    } else if (next < min) {
+      next = min + (min - next);
+      nextDirection = 1;
+    }
+    setDirection(nextDirection);
+    return next;
   }
 
   void _event(SpaceData s, String message, String kind) {
@@ -757,27 +1020,6 @@ class NexusStore extends ChangeNotifier {
     );
   }
 
-  void _door() {
-    final s = space('storage');
-    if (s.physical) return;
-    s.doorOpen = !s.doorOpen;
-    _event(s, s.doorOpen ? 'Porta aberta' : 'Porta fechada', 'door');
-    if (s.doorOpen) {
-      _alert(
-        'door-storage',
-        'Porta aberta',
-        'storage',
-        devicesIn('storage').first.id,
-        'A porta de acesso ao depósito está aberta.',
-        AlertLevel.warning,
-      );
-    } else {
-      for (final a in alerts.where((a) => a.id == 'door-storage')) {
-        a.resolved = true;
-      }
-    }
-  }
-
   void applyScenario(DemoScenario value) {
     _loading?.cancel();
     state = ViewState.normal;
@@ -787,9 +1029,6 @@ class NexusStore extends ChangeNotifier {
         _connection(true);
         if (!space('conference').physical) {
           space('conference').temperature = 24.1;
-        }
-        if (!space('storage').physical) {
-          space('storage').doorOpen = false;
         }
         for (final a in alerts) {
           a.resolved = true;
@@ -813,9 +1052,6 @@ class NexusStore extends ChangeNotifier {
           );
         }
         break;
-      case DemoScenario.door:
-        _door();
-        break;
       case DemoScenario.presence:
         final s = space('parking');
         if (!s.physical) {
@@ -831,7 +1067,7 @@ class NexusStore extends ChangeNotifier {
         final s = space('restaurant');
         if (!s.physical) {
           s.light = s.light > 500 ? 240 : 780;
-          _event(s, 'Luminosidade: ${s.light} lux', 'light');
+          _event(s, 'Luminosidade: ${s.light} raw', 'light');
         }
         break;
     }
@@ -882,6 +1118,9 @@ class NexusStore extends ChangeNotifier {
   }) {
     notifications = notify ?? notifications;
     reduceMotion = motion ?? reduceMotion;
+    if (motion != null && reduceMotionListenable.value != reduceMotion) {
+      reduceMotionListenable.value = reduceMotion;
+    }
     this.showHotelViewer = showHotelViewer ?? this.showHotelViewer;
     hotelName = hotel ?? hotelName;
     userName = user ?? userName;
@@ -890,8 +1129,14 @@ class NexusStore extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     _loading?.cancel();
+    _realtimeNotifyTimer?.cancel();
+    if (_deviceEventsChannel != null && repository != null) {
+      unawaited(repository!.unsubscribe(_deviceEventsChannel!));
+    }
+    reduceMotionListenable.dispose();
     super.dispose();
   }
 }

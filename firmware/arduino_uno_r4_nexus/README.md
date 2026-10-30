@@ -27,3 +27,16 @@ npm run arduino:bridge:dry-run -- --port COM11
 ```
 
 O Monitor Serial deve estar fechado. O dry-run continua lendo a serial, valida as linhas e prepara a assinatura, mas não se conecta ao broker nem publica mensagens. A primeira execução em modo MQTT deve aguardar autorização explícita do responsável pelo projeto.
+
+Para a primeira publicação controlada, a bridge aceita `--once`: abre a porta,
+aguarda a primeira linha JSON válida, assina o envelope, publica uma vez com
+QoS 1 e encerra após o callback MQTT. Se a publicação falhar, não tenta de
+novo. A linha do consumer aceita o tópico legado `quarto-101` como alias para
+`ESP32-001`, mantendo também o tópico atual da Piscina; o banco associa a
+leitura ao espaço cadastrado para o dispositivo.
+
+Depois da autorização explícita, execute na raiz do repositório:
+
+```powershell
+npm run arduino:bridge -- --port COM12 --once
+```

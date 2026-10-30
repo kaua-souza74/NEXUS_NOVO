@@ -5,6 +5,12 @@ import 'store.dart';
 import 'app.dart' show Brand;
 
 const gap = SizedBox(height: 16);
+const _physicalDeviceId = 'ESP32-001';
+const _physicalDeviceTopic = 'nexus/vista-real/quarto-101/ESP32-001/readings';
+
+String _deviceTitle(DeviceData device) =>
+    device.id == _physicalDeviceId ? '001' : device.id;
+
 Widget bodyColumn(List<Widget> children) =>
     Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
 Widget detailBody(List<Widget> children) => Scaffold(
@@ -128,7 +134,9 @@ class HomePage extends StatelessWidget {
                     Row(
                       children: [
                         Pill(
-                          s.state == ViewState.offline
+                          s.databaseRealtimeConnected
+                              ? 'ATUALIZADO AGORA'
+                              : s.state == ViewState.offline
                               ? 'ÚLTIMA LEITURA'
                               : s.paused
                               ? 'PAUSADO'
@@ -159,7 +167,7 @@ class HomePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 18),
                     AnimatedNumber(
-                      s.databaseSpaceCount.toDouble(),
+                      s.spaces.length.toDouble(),
                       style: const TextStyle(
                         fontSize: 82,
                         height: 1.05,
@@ -176,12 +184,16 @@ class HomePage extends StatelessWidget {
                     Pill(
                       s.databaseError != null
                           ? 'Não foi possível atualizar'
+                          : s.databaseRealtimeConnected
+                          ? 'Recebendo leituras'
                           : s.databaseSyncedAt != null
                           ? 'Leituras atualizadas'
                           : 'Aguardando sincronização',
                       dark: true,
                       icon: s.databaseError != null
                           ? Icons.error_outline
+                          : s.databaseRealtimeConnected
+                          ? Icons.bolt_rounded
                           : Icons.check_circle_outline,
                     ),
                     const SizedBox(height: 25),
@@ -194,21 +206,21 @@ class HomePage extends StatelessWidget {
                         children: [
                           Expanded(
                             child: _HeroStat(
-                              '${s.databaseOnlineDeviceCount}',
+                              '${s.onlineDevices}',
                               'Sensores online',
                               N.peach,
                             ),
                           ),
                           Expanded(
                             child: _HeroStat(
-                              '${s.databaseDeviceCount - s.databaseOnlineDeviceCount}',
+                              '${s.devices.length - s.onlineDevices}',
                               'Sem sinal',
                               Colors.white60,
                             ),
                           ),
                           Expanded(
                             child: _HeroStat(
-                              '${s.databaseReadings.length}',
+                              '${s.recentReadingCount}',
                               'Leituras recentes',
                               const Color(0xFFF4B7A8),
                             ),
@@ -255,7 +267,7 @@ class HomePage extends StatelessWidget {
                     separatorBuilder: (_, i) => const SizedBox(width: 12),
                     itemBuilder: (context, i) {
                       final space = s.space(
-                        ['test-bench', 'lobby', 'pool', 'restaurant'][i],
+                        ['pool', 'lobby', 'restaurant', 'parking'][i],
                       );
                       return SizedBox(
                         width: cardWidth,
@@ -346,7 +358,7 @@ class HomePage extends StatelessWidget {
                           label: 'Luminosidade',
                           value: s.averageLight,
                           maximum: 1200,
-                          unit: 'lx',
+                          unit: 'raw',
                           color: N.amber,
                         ),
                       ),
@@ -477,7 +489,11 @@ class _HeroStat extends StatelessWidget {
         Text(
           value,
           textAlign: TextAlign.center,
-          style: TextStyle(color: color, fontSize: 25, fontWeight: FontWeight.w500),
+          style: TextStyle(
+            color: color,
+            fontSize: 25,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         const SizedBox(height: 5),
         SizedBox(
@@ -487,7 +503,11 @@ class _HeroStat extends StatelessWidget {
               label,
               maxLines: 2,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white60, fontSize: 11, height: 1.25),
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 11,
+                height: 1.25,
+              ),
             ),
           ),
         ),
@@ -548,10 +568,7 @@ class _SpacesPageState extends State<SpacesPage> {
         .toList();
     return PageScroll(
       children: [
-        Heading(
-          'Espaços',
-          subtitle: '${s.databaseSpaceCount} áreas vinculadas a leituras.',
-        ),
+        Heading('Espaços', subtitle: '${s.spaces.length} espaços monitorados.'),
         const PhotoBanner(
           image: 'assets/images/hotel-corridor.png',
           eyebrow: 'Ambientes conectados',
@@ -619,7 +636,7 @@ class _DevicesPageState extends State<DevicesPage> {
       children: [
         PhotoBanner(
           image: 'assets/images/iot-device-professional.png',
-          eyebrow: '${s.databaseDeviceCount} sensores · ESP32-00 físico',
+          eyebrow: '${s.devices.length} dispositivos cadastrados',
           title: 'Dispositivos',
           subtitle: 'Conexões e leituras dos seus ambientes.',
           trailing: const Icon(
@@ -633,7 +650,7 @@ class _DevicesPageState extends State<DevicesPage> {
               children: [
                 Expanded(
                   child: _DeviceStat(
-                    '${s.databaseOnlineDeviceCount}',
+                    '${s.onlineDevices}',
                     'Sensores online',
                     N.peach,
                   ),
@@ -645,7 +662,7 @@ class _DevicesPageState extends State<DevicesPage> {
                 ),
                 Expanded(
                   child: _DeviceStat(
-                    '${s.databaseDeviceCount - s.databaseOnlineDeviceCount}',
+                    '${s.devices.length - s.onlineDevices}',
                     'Sem sinal',
                     Colors.white,
                   ),
@@ -684,82 +701,217 @@ class DeviceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = NexusScope.of(context);
+    final room = s.space(device.spaceId);
     return Surface(
-      onTap: () => openPage(
-        context,
-        device.physical
-            ? const Esp32PhysicalTestPage()
-            : DeviceDetail(device.id),
-      ),
-      child: bodyColumn([
-        Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.asset(
-                device.physical
-                    ? 'assets/images/iot-device-professional.png'
-                    : spaceImagePath(s.space(device.spaceId)),
-                width: 58,
-                height: 58,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: bodyColumn([
-                Text(
-                  '${device.id} · ${device.name == device.id ? (device.physical ? 'Arduino físico' : 'Dispositivo') : device.name}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+      padding: EdgeInsets.zero,
+      onTap: () => openPage(context, DeviceDetail(device.id)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 124,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.asset(
+                  'assets/images/iot-device-professional.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      const ColoredBox(
+                        color: N.wine,
+                        child: Icon(
+                          Icons.memory_rounded,
+                          color: N.peach,
+                          size: 38,
+                        ),
+                      ),
+                ),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x160E0B0C), Color(0xB52E1D24)],
+                    ),
                   ),
                 ),
-                Text(
-                  s.space(device.spaceId).name,
-                  style: const TextStyle(color: N.muted, fontSize: 12),
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  top: 14,
+                  child: Row(
+                    children: [
+                      Text(
+                        'DISPOSITIVO ${_deviceTitle(device)}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const Spacer(),
+                      Pill(
+                        device.online ? 'Online' : 'Offline',
+                        dark: true,
+                        icon: device.online
+                            ? Icons.check_circle_outline
+                            : Icons.cloud_off_outlined,
+                      ),
+                    ],
+                  ),
                 ),
-              ]),
+                Positioned(
+                  left: 16,
+                  bottom: 12,
+                  child: Text(
+                    room.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      shadows: [Shadow(color: Colors.black38, blurRadius: 8)],
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const Icon(Icons.chevron_right, color: N.muted),
-          ],
-        ),
-        gap,
-        Row(
-          children: [
-            Pill(
-              device.physical
-                  ? 'Testes pendentes'
-                  : device.online
-                  ? 'Online'
-                  : 'Offline',
-              color: device.physical
-                  ? N.amber
-                  : device.online
-                  ? N.green
-                  : N.muted,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _deviceTitle(device),
+                        style: const TextStyle(
+                          color: N.ink,
+                          fontSize: 20,
+                          height: 1,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -.4,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: const BoxDecoration(
+                        color: N.canvas,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.arrow_outward_rounded,
+                        color: N.wine,
+                        size: 17,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                Row(
+                  children: [
+                    Icon(
+                      device.online ? Icons.circle : Icons.circle_outlined,
+                      size: 8,
+                      color: device.online ? N.green : N.muted,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      device.online ? 'Conectado' : 'Sem comunicação',
+                      style: TextStyle(
+                        color: device.online ? N.green : N.muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      ageLabel(device.lastSeen),
+                      style: const TextStyle(color: N.muted, fontSize: 10),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 15),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _DeviceReading(
+                        'Temp.',
+                        '${room.temperature.toStringAsFixed(1)} °C',
+                        Icons.thermostat_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _DeviceReading(
+                        'Umidade',
+                        '${room.humidity.round()}%',
+                        Icons.water_drop_outlined,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _DeviceReading(
+                        'Luz · raw',
+                        '${room.light}',
+                        Icons.light_mode_outlined,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            const Spacer(),
-            Text(
-              device.physical
-                  ? 'hardware físico'
-                  : device.online
-                  ? 'disponível'
-                  : 'sem comunicação',
-              style: const TextStyle(color: N.muted, fontSize: 11),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Text(
-          device.physical
-              ? 'Página de testes · sem gravação no banco'
-              : 'Sensores do ambiente · leituras e estado da conexão',
-          style: const TextStyle(color: N.muted, fontSize: 10),
-        ),
-      ]),
+          ),
+        ],
+      ),
     );
   }
+}
+
+class _DeviceReading extends StatelessWidget {
+  const _DeviceReading(this.label, this.value, this.icon);
+  final String label, value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 10),
+    decoration: BoxDecoration(
+      color: N.canvas,
+      borderRadius: BorderRadius.circular(15),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: N.wine, size: 15),
+        const SizedBox(height: 8),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: N.ink,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: N.muted, fontSize: 9),
+        ),
+      ],
+    ),
+  );
 }
 
 class _DeviceStat extends StatelessWidget {
@@ -1035,7 +1187,7 @@ class _SpaceDetailState extends State<SpaceDetail> {
                           v.presence ? 'Ocupado' : 'Livre',
                           style: TextStyle(
                             color: v.presence
-                                ? const Color(0xFFBFE3CF)
+                                ? const Color(0xFFFFB8B5)
                                 : Colors.white70,
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1083,7 +1235,7 @@ class _SpaceDetailState extends State<SpaceDetail> {
                           ),
                           Expanded(
                             child: _HeroStat(
-                              '${v.light} lx',
+                              '${v.light} raw',
                               'Luminosidade',
                               Colors.white,
                             ),
@@ -1115,7 +1267,7 @@ class _SpaceDetailState extends State<SpaceDetail> {
               Metric(
                 label: 'Luminosidade',
                 value: v.light.toDouble(),
-                unit: ' lx',
+                unit: ' raw',
                 icon: Icons.light_mode_outlined,
               ),
             ],
@@ -1128,12 +1280,6 @@ class _SpaceDetailState extends State<SpaceDetail> {
                 v.presence ? 'Detectada' : 'Sem presença',
                 Icons.person_outline,
                 v.presence,
-              ),
-              _StatusSensor(
-                'Porta',
-                v.doorOpen ? 'Aberta' : 'Fechada',
-                Icons.sensor_door_outlined,
-                v.doorOpen,
               ),
             ],
           ),
@@ -1161,7 +1307,7 @@ class _SpaceDetailState extends State<SpaceDetail> {
           const Section('Eventos recentes'),
           Surface(
             child: bodyColumn([
-              for (final e in v.events)
+              for (final e in v.events.where((event) => event.kind != 'door'))
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: CircleAvatar(
@@ -1248,162 +1394,6 @@ List<String> periodLabels(String period) => switch (period) {
   _ => ['−24h', '−16h', '−8h', 'Agora'],
 };
 
-class Esp32PhysicalTestPage extends StatefulWidget {
-  const Esp32PhysicalTestPage({super.key});
-
-  @override
-  State<Esp32PhysicalTestPage> createState() => _Esp32PhysicalTestPageState();
-}
-
-class _Esp32PhysicalTestPageState extends State<Esp32PhysicalTestPage> {
-  static const _checks = <(String, String, IconData)>[
-    ('wifi', 'Wi-Fi 2,4 GHz', Icons.wifi_rounded),
-    ('mqtt', 'MQTT · broker e tópico', Icons.hub_outlined),
-    ('dht11', 'DHT11 · temperatura e umidade', Icons.thermostat_outlined),
-    ('ldr', 'LDR · luminosidade', Icons.light_mode_outlined),
-    ('button', 'Botão · presença simulada (GPIO 27)', Icons.touch_app_outlined),
-    ('hmac', 'Autenticação HMAC-SHA256', Icons.verified_user_outlined),
-    ('events', 'Envio e recebimento de eventos', Icons.storage_rounded),
-  ];
-  final _passed = <String>{};
-  bool _validated = false;
-
-  @override
-  Widget build(BuildContext context) => detailBody([
-    const Heading(
-      'ESP32-00',
-      back: true,
-      subtitle: 'Arduino físico · testes de bancada',
-    ),
-    ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: Image.asset(
-        'assets/images/iot-device-professional.png',
-        width: double.infinity,
-        height: 210,
-        fit: BoxFit.cover,
-      ),
-    ),
-    gap,
-    Surface(
-      dark: true,
-      child: bodyColumn([
-        Row(
-          children: [
-            const Icon(Icons.memory_rounded, color: N.peach, size: 42),
-            const Spacer(),
-            const Pill('FÍSICO · NÃO INTEGRADO', dark: true),
-          ],
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          'Preparação do dispositivo',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 22,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'O ESP32-00 é a placa física. Use este checklist de bancada para conferir sensores, conexão MQTT e ingestão.',
-          style: TextStyle(color: Colors.white70, fontSize: 12, height: 1.5),
-        ),
-      ]),
-    ),
-    const Section('Checklist de testes'),
-    Surface(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Column(
-        children: [
-          for (final (id, label, icon) in _checks)
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: Icon(icon, color: N.wine, size: 20),
-              title: Text(label, style: const TextStyle(fontSize: 13)),
-              value: _passed.contains(id),
-              activeColor: N.wine,
-              onChanged: (value) => setState(() {
-                if (value == true) {
-                  _passed.add(id);
-                } else {
-                  _passed.remove(id);
-                }
-                _validated = false;
-              }),
-            ),
-        ],
-      ),
-    ),
-    gap,
-    Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: [
-        FilledButton.icon(
-          onPressed: () => setState(() => _validated = true),
-          icon: const Icon(Icons.fact_check_outlined),
-          label: const Text('Validar checklist'),
-        ),
-        OutlinedButton.icon(
-          onPressed: () => setState(() {
-            _passed.clear();
-            _validated = false;
-          }),
-          icon: const Icon(Icons.restart_alt_rounded),
-          label: const Text('Limpar'),
-        ),
-      ],
-    ),
-    if (_validated) ...[
-      gap,
-      Surface(
-        color: _passed.length == _checks.length
-            ? const Color(0xFFE5EFE9)
-            : const Color(0xFFF3E8DB),
-        child: Row(
-          children: [
-            Icon(
-              _passed.length == _checks.length
-                  ? Icons.check_circle_outline
-                  : Icons.pending_actions_outlined,
-              color: _passed.length == _checks.length ? N.green : N.amber,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                '${_passed.length}/${_checks.length} itens marcados · ${_passed.length == _checks.length ? 'bancada pronta para integração' : 'há testes pendentes'}',
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ],
-    const Section('Contrato previsto'),
-    const Surface(
-      child: Column(
-        children: [
-          KeyValue('Identificador', 'ESP32-00'),
-          KeyValue('Transporte', 'MQTT · broker.emqx.io:1883'),
-          KeyValue(
-            'Tópico',
-            'nexus/vista-real/sala-de-testes/ESP32-00/readings',
-          ),
-          KeyValue('Sensores', 'DHT11 · LDR · botão de presença'),
-          KeyValue('Pinos', 'GPIO 4 · 27 · 34'),
-          KeyValue('Persistência', 'Após provisionar device e credencial'),
-        ],
-      ),
-    ),
-    gap,
-    const Text(
-      'O checklist é local e temporário. O firmware publicado só será autenticado e persistido depois que o ESP32-00 e sua credencial exclusiva estiverem provisionados.',
-      style: TextStyle(fontSize: 11, color: N.muted, height: 1.45),
-    ),
-  ]);
-}
-
 class DeviceDetail extends StatelessWidget {
   const DeviceDetail(this.id, {super.key});
   final String id;
@@ -1412,47 +1402,69 @@ class DeviceDetail extends StatelessWidget {
     final s = NexusScope.of(context);
     final d = s.device(id), v = s.space(d.spaceId);
     return detailBody([
-      Heading(id, back: true, subtitle: v.name),
+      Heading(_deviceTitle(d), back: true, subtitle: v.name),
       DataGate(
         child: bodyColumn([
           Surface(
             dark: true,
-            child: bodyColumn([
-              Row(
-                children: [
-                  const Icon(Icons.memory_rounded, color: N.peach, size: 42),
-                  const Spacer(),
-                  Pill(d.online ? 'Online' : 'Offline', dark: true),
-                ],
-              ),
-              const SizedBox(height: 24),
-              Text(
-                d.online ? 'Conectado ao ambiente' : 'Conexão interrompida',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 23,
-                  fontWeight: FontWeight.w500,
+            backgroundImage: 'assets/images/iot-device-professional.png',
+            padding: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: bodyColumn([
+                Row(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: .14),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(
+                        Icons.memory_rounded,
+                        color: N.peach,
+                        size: 27,
+                      ),
+                    ),
+                    const Spacer(),
+                    Pill(d.online ? 'Online' : 'Offline', dark: true),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 7),
-              Text(
-                'Última comunicação ${ageLabel(d.lastSeen)}',
-                style: const TextStyle(color: Colors.white60, fontSize: 12),
-              ),
-            ]),
+                const SizedBox(height: 24),
+                Text(
+                  d.online ? 'Conectado à ${v.name}' : 'Conexão interrompida',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  'Última comunicação ${ageLabel(d.lastSeen)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ]),
+            ),
           ),
           const Section('Leituras dos sensores'),
           ResponsiveGrid(
             children: [
               Metric(
-                label: 'DHT22 · Temperatura',
+                label: d.id == _physicalDeviceId
+                    ? 'DHT11 · Temperatura'
+                    : 'DHT22 · Temperatura',
                 value: v.temperature,
                 decimals: 1,
                 unit: '°C',
                 icon: Icons.thermostat_outlined,
               ),
               Metric(
-                label: 'DHT22 · Umidade',
+                label: d.id == _physicalDeviceId
+                    ? 'DHT11 · Umidade'
+                    : 'DHT22 · Umidade',
                 value: v.humidity,
                 unit: '%',
                 icon: Icons.water_drop_outlined,
@@ -1460,11 +1472,13 @@ class DeviceDetail extends StatelessWidget {
               Metric(
                 label: 'LDR · Luminosidade',
                 value: v.light.toDouble(),
-                unit: ' lx',
+                unit: ' raw',
                 icon: Icons.light_mode_outlined,
               ),
               _StatusSensor(
-                'PIR · Presença',
+                d.id == _physicalDeviceId
+                    ? 'Botão · Presença'
+                    : 'PIR · Presença',
                 v.presence ? 'Detectada' : 'Ausente',
                 Icons.person_outline,
                 v.presence,
@@ -1472,12 +1486,6 @@ class DeviceDetail extends StatelessWidget {
             ],
           ),
           gap,
-          _StatusSensor(
-            'Reed switch · Porta',
-            v.doorOpen ? 'Aberta' : 'Fechada',
-            Icons.sensor_door_outlined,
-            v.doorOpen,
-          ),
           const Section('Histórico de temperatura'),
           Surface(
             child: NexusChart(values: v.history, unit: '°C'),
@@ -1487,14 +1495,20 @@ class DeviceDetail extends StatelessWidget {
             child: bodyColumn([
               KeyValue(
                 'Modelo',
-                d.databaseBacked ? 'ESP32' : 'ESP32 DevKit V1',
+                d.id == _physicalDeviceId
+                    ? 'UNO R4 WiFi'
+                    : d.databaseBacked
+                    ? 'ESP32'
+                    : 'ESP32 DevKit V1',
               ),
               KeyValue('Firmware', 'Não informado'),
               KeyValue('Protocolo', 'MQTT'),
               KeyValue(
                 'Tópico',
-                d.databaseBacked
-                    ? 'nexus/vista-real/piscina/ESP32-001/readings'
+                d.id == _physicalDeviceId
+                    ? _physicalDeviceTopic
+                    : d.databaseBacked
+                    ? 'nexus/vista-real/piscina/${d.id}/readings'
                     : '—',
               ),
               KeyValue(
@@ -2259,7 +2273,6 @@ void showSimulation(BuildContext context) {
                       DemoScenario.normal: 'Tudo normal',
                       DemoScenario.offline: 'ESP32 offline',
                       DemoScenario.heat: 'Temperatura alta',
-                      DemoScenario.door: 'Alternar porta',
                       DemoScenario.presence: 'Alternar presença',
                       DemoScenario.light: 'Alterar iluminação',
                     }.entries)

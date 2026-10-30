@@ -17,7 +17,6 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
   static const _planSize = Size(760, 507);
   static const _positions = <String, Offset>{
     'lobby': Offset(.13, .50),
-    'test-bench': Offset(.36, .17),
     'parking': Offset(.49, .17),
     'kitchen': Offset(.69, .45),
     'outdoor': Offset(.17, .78),
@@ -110,8 +109,6 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
   Widget build(BuildContext context) {
     final store = NexusScope.of(context);
     final spaces = store.spaces;
-    final physicalSpaceCount = spaces.where((space) => space.physical).length;
-    final simulatedSpaceCount = spaces.length - physicalSpaceCount;
     final preferredId =
         spaces.where((space) => space.physical).firstOrNull?.id ??
         spaces.firstOrNull?.id;
@@ -141,7 +138,7 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${spaces.length} áreas · $simulatedSpaceCount em simulação · $physicalSpaceCount com Arduino',
+                    '${spaces.length} ambientes monitorados',
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
@@ -149,7 +146,7 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
                   ),
                   const SizedBox(height: 6),
                   const Text(
-                    'Leituras do Arduino a cada 8 s · arraste, aproxime e toque em uma área.',
+                    'Leituras sincronizadas a cada 8 s · arraste, aproxime e toque em uma área.',
                     style: TextStyle(color: N.muted, fontSize: 10),
                   ),
                   const SizedBox(height: 13),
@@ -268,11 +265,9 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                !current.physical
-                                    ? 'Simulação ativa · atualização em tempo real'
-                                    : liveReadings.isEmpty
-                                    ? 'Aguardando leitura do Arduino'
-                                    : 'Leitura recebida ${ageLabel(current.lastReading)}',
+                                current.physical && liveReadings.isEmpty
+                                    ? 'Aguardando leitura MQTT'
+                                    : 'Última leitura ${ageLabel(current.lastReading)}',
                                 style: const TextStyle(
                                   color: N.muted,
                                   fontSize: 11,
@@ -284,10 +279,10 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
                         Pill(
                           current.physical
                               ? liveReadings.isEmpty
-                                    ? 'Aguardando Arduino'
+                                    ? 'Aguardando leitura'
                                     : current.online
-                                    ? 'Arduino online'
-                                    : 'Arduino offline'
+                                    ? 'Online'
+                                    : 'Offline'
                               : current.online
                               ? 'Simulação ativa'
                               : 'Simulação pausada',
@@ -328,10 +323,10 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
                         _ViewerReading(
                           'Luminosidade',
                           current.physical
-                              ? _numericValue(latestByType['light'], ' lx')
+                              ? _numericValue(latestByType['light'], ' raw')
                               : _formatSimulatedValue(
                                   current.light.toDouble(),
-                                  ' lx',
+                                  ' raw',
                                 ),
                           Icons.light_mode_outlined,
                         ),
@@ -343,15 +338,6 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
                               ? 'Detectada'
                               : 'Não detectada',
                           Icons.person_outline,
-                        ),
-                        _ViewerReading(
-                          'Porta',
-                          current.physical
-                              ? _booleanValue(latestByType['door'])
-                              : current.doorOpen
-                              ? 'Aberta'
-                              : 'Fechada',
-                          Icons.sensor_door_outlined,
                         ),
                       ],
                     ),
@@ -370,22 +356,19 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
       required String tooltip,
       required IconData icon,
       required VoidCallback onPressed,
-    }) =>
-        IconButton(
-          tooltip: tooltip,
-          onPressed: onPressed,
-          style: IconButton.styleFrom(
-            fixedSize: const Size(42, 42),
-            padding: EdgeInsets.zero,
-            backgroundColor: Colors.white,
-            foregroundColor: N.wine,
-            side: const BorderSide(color: N.line),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-          icon: Icon(icon, size: 19),
-        );
+    }) => IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        fixedSize: const Size(42, 42),
+        padding: EdgeInsets.zero,
+        backgroundColor: Colors.white,
+        foregroundColor: N.wine,
+        side: const BorderSide(color: N.line),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+      icon: Icon(icon, size: 19),
+    );
 
     final back = action(
       tooltip: 'Voltar',
@@ -457,8 +440,7 @@ class _HotelViewerPageState extends State<HotelViewerPage> {
       left: position.dx * _planSize.width - 21,
       top: position.dy * _planSize.height - 21,
       child: Tooltip(
-        message:
-            '${space.name} · ${space.physical ? 'Arduino físico' : 'Simulação'}',
+        message: space.name,
         child: Stack(
           clipBehavior: Clip.none,
           children: [

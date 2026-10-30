@@ -67,12 +67,13 @@ class _NexusAppState extends State<NexusApp> {
           textTheme: const TextTheme(bodyMedium: TextStyle(color: N.ink)),
           dividerColor: N.line,
         ),
-        builder: (context, child) => AnimatedBuilder(
-          animation: store,
-          builder: (context, _) => MediaQuery(
+        builder: (context, child) => ValueListenableBuilder<bool>(
+          valueListenable: store.reduceMotionListenable,
+          child: child,
+          builder: (context, reduceMotion, child) => MediaQuery(
             data: MediaQuery.of(
               context,
-            ).copyWith(disableAnimations: store.reduceMotion),
+            ).copyWith(disableAnimations: reduceMotion),
             child: child!,
           ),
         ),
@@ -117,13 +118,7 @@ class _NexusShellState extends State<NexusShell> {
     });
   }
 
-  static const labels = [
-    'Início',
-    'Espaços',
-    'Sensores',
-    'Alertas',
-    'Perfil',
-  ];
+  static const labels = ['Início', 'Espaços', 'Sensores', 'Alertas', 'Perfil'];
   static const icons = [
     Icons.home_outlined,
     Icons.grid_view_rounded,
@@ -138,6 +133,7 @@ class _NexusShellState extends State<NexusShell> {
       index = value;
     });
   }
+
   Widget destination(int i, NexusStore store) => Expanded(
     child: Tooltip(
       message: labels[i],
@@ -177,29 +173,11 @@ class _NexusShellState extends State<NexusShell> {
                     child: FadeTransition(opacity: animation, child: child),
                   ),
                   child: index == i
-                      ? Column(
+                      ? Icon(
+                          icons[i],
                           key: const ValueKey('selected'),
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(icons[i], color: Colors.white, size: 21),
-                            const SizedBox(height: 2),
-                            SizedBox(
-                              width: 48,
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  labels[i],
-                                  maxLines: 1,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w600,
-                                    height: 1,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                          color: Colors.white,
+                          size: 23,
                         )
                       : Icon(
                           icons[i],
@@ -303,35 +281,45 @@ class _NexusShellState extends State<NexusShell> {
       ),
     );
     final sidebar = Container(
-      width: 220,
-      padding: const EdgeInsets.all(22),
+      width: 82,
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 10),
       color: Colors.white,
       child: Material(
         type: MaterialType.transparency,
         child: Column(
           children: [
-            const Brand(),
-            const SizedBox(height: 42),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.asset(
+                'assets/brand/nexus_logo.png',
+                width: 38,
+                height: 38,
+              ),
+            ),
+            const SizedBox(height: 32),
             for (var i = 0; i < 5; i++)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Tooltip(
+                  message: labels[i],
+                  child: Semantics(
+                    label: labels[i],
+                    button: true,
+                    selected: index == i,
+                    child: IconButton(
+                      onPressed: () => select(i),
+                      style: IconButton.styleFrom(
+                        fixedSize: const Size(54, 54),
+                        backgroundColor: index == i ? N.wine : N.canvas,
+                        foregroundColor: index == i ? Colors.white : N.muted,
+                        shape: const CircleBorder(),
+                      ),
+                      icon: Icon(icons[i]),
+                    ),
                   ),
-                  selected: index == i,
-                  selectedTileColor: N.canvas,
-                  leading: Icon(icons[i]),
-                  title: Text(labels[i]),
-                  onTap: () => select(i),
                 ),
               ),
             const Spacer(),
-            const Text(
-              'HOTEL INTELLIGENCE',
-              style: TextStyle(fontSize: 10, letterSpacing: 2, color: N.muted),
-            ),
-            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -340,7 +328,7 @@ class _NexusShellState extends State<NexusShell> {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          const Positioned.fill(child: NexusBackdrop()),
+          const Positioned.fill(child: RepaintBoundary(child: NexusBackdrop())),
           SafeArea(
             child: wide
                 ? Row(
